@@ -129,6 +129,30 @@ describe('extractContext', () => {
     expect(ctx.sentence.length).toBeLessThanOrEqual(420)
   })
 
+  it('返回的 offset 精确指向划选位置，而非同名子串', () => {
+    // 划的是句尾的 present，句中的 representation 里也含 present
+    const range = selectWord(
+      '<p>A representation of X at the present moment.</p>',
+      'present',
+      2, // representation 里的算第一个，句尾的才是第二个
+    )
+    const ctx = extractContext(range)!
+
+    expect(ctx.selection).toBe('present')
+    expect(ctx.sentence.slice(ctx.offset, ctx.offset + 7)).toBe('present')
+    // 必须落在句尾那个，不能是 representation 里的
+    expect(ctx.offset).toBe(ctx.sentence.lastIndexOf('present'))
+    expect(ctx.offset).toBeGreaterThan(ctx.sentence.indexOf('representation'))
+  })
+
+  it('压缩空白后 offset 依然对得上', () => {
+    const range = selectWord('<p>The quick\n   brown   fox\tjumps.</p>', 'fox')
+    const ctx = extractContext(range)!
+
+    expect(ctx.sentence).toBe('The quick brown fox jumps.')
+    expect(ctx.sentence.slice(ctx.offset, ctx.offset + 3)).toBe('fox')
+  })
+
   it('空选区返回 null', () => {
     document.body.innerHTML = '<p>hello world</p>'
     const node = textNodeOf(document.body)

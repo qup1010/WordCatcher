@@ -341,7 +341,7 @@ export default function App() {
             <span className="brand-reading">/wɜːd ˈkætʃə(r)/</span>
             <span className="brand-pos">n.</span>
           </div>
-          <p className="brand-def">划词采集器：网页划词，快速翻译或 AI 语境详解，一键存入 Anki。</p>
+          <p className="brand-def">网页划词，快速翻译或 AI 语境详解，存入 Anki。</p>
         </div>
 
         <nav>
@@ -388,7 +388,7 @@ export default function App() {
       <main>
         <section id="sec-ai" style={{ '--i': 0 } as React.CSSProperties}>
           <h2>AI 接口</h2>
-          <p className="muted">任何 OpenAI 兼容的服务都可以。支持多套配置，点击即切换。</p>
+          <p className="muted">用于 AI 详解。兼容 OpenAI 接口的服务均可，点击标签切换配置。</p>
 
           <div className="profiles">
             {s.ai.profiles.map(p => (
@@ -516,8 +516,8 @@ export default function App() {
         <section id="sec-mt" style={{ '--i': 1 } as React.CSSProperties}>
           <h2>快速翻译</h2>
           <p className="muted">
-            划词后点 <Zap size={13} className="inline-icon" /> 使用。免费、即时、不消耗 AI 额度；
-            失败时自动切换另一家。
+            划词后点 <Zap size={13} className="inline-icon" /> 使用，不消耗 AI 额度。
+            所选服务失败时自动切换另一家。
           </p>
 
           <div className="field">
@@ -531,13 +531,13 @@ export default function App() {
               onChange={v => patchSection('mt', { provider: v })}
             />
           </div>
-          <p className="hint">微软在各种网络环境下都能用；谷歌在部分地区连不上。</p>
+          <p className="hint">谷歌翻译在部分网络环境下无法连接。</p>
         </section>
 
         <section id="sec-anki" style={{ '--i': 2 } as React.CSSProperties}>
           <h2>Anki 单词本</h2>
           <p className="muted">
-            卡片写入本地 Anki，复习和记忆曲线由它负责。需要
+            卡片写入本地 Anki。需要
             <a href="https://apps.ankiweb.net/" target="_blank" rel="noreferrer"> Anki 桌面版</a>
             和 AnkiConnect 插件（附加组件代码 <code>2055492159</code>），使用时保持 Anki 运行。
           </p>
@@ -617,7 +617,7 @@ export default function App() {
               onChange={v => patch('triggerMode', v)}
             />
           </div>
-          <p className="hint">「先显示按钮」可以在快译和 AI 之间选择，也更省 AI 额度。</p>
+          <p className="hint">「直接 AI 详解」会跳过快译，每次划词都调用 AI。</p>
 
           <label className="field">
             <span>学习语言</span>
@@ -663,10 +663,7 @@ export default function App() {
           </label>
         </section>
 
-        <p className="foot-note">
-          <Sparkles size={12} className="inline-icon" />
-          <span>所有改动自动保存。划词面板中的更改即时生效。</span>
-        </p>
+        <p className="foot-note">设置修改后自动保存并立即生效。</p>
       </main>
     </div>
   )

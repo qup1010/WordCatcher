@@ -61,18 +61,30 @@ export async function checkConnection(url: string): Promise<number> {
 }
 
 /** 把原句里的目标词换成空格，正面才有"在语境中回忆"的效果 */
-export function buildClozeSentence(sentence: string, selection: string): string {
+export function buildClozeSentence(sentence: string, selection: string, offset = -1): string {
+  const at = resolveOffset(sentence, selection, offset)
+  if (at < 0) return escapeHtml(sentence) // 对不上就不挖，宁可不挖也别挖错
+
   const needle = selection.trim()
-  if (!needle) return sentence
-
-  const at = sentence.toLowerCase().indexOf(needle.toLowerCase())
-  if (at === -1) return sentence // 抓取的原句和划选文本对不上就不挖，宁可不挖也别挖错
-
   return (
-    sentence.slice(0, at)
+    escapeHtml(sentence.slice(0, at))
     + '<span class="wc-blank">[&nbsp;?&nbsp;]</span>'
-    + sentence.slice(at + needle.length)
+    + escapeHtml(sentence.slice(at + needle.length))
   )
+}
+
+/**
+ * 定位目标词在原句中的位置。
+ *
+ * 优先用内容脚本给的精确偏移，只有它对不上（旧数据、原句被改写）时才退回查找。
+ * 纯查找会挖错词：划 "present" 会命中 "representation" 里的那个。
+ */
+export function resolveOffset(sentence: string, selection: string, hint: number): number {
+  const needle = selection.trim()
+  if (!needle) return -1
+
+  if (hint >= 0 && sentence.slice(hint, hint + needle.length) === needle) return hint
+  return sentence.toLowerCase().indexOf(needle.toLowerCase())
 }
 
 function cardTemplates(ttsLang: string) {
@@ -197,18 +209,16 @@ function escapeHtml(text: string): string {
 }
 
 export function buildNoteFields(card: CapturedCard, s: Settings): Record<string, string> {
-  const sentence = escapeHtml(card.sentence)
-  // 必须拿转义后的划选文本去匹配转义后的句子，否则含 & < > 的词组
-  // （例如 "Tom & Jerry"）会因为两边编码不一致而静默挖不上空
-  const selection = escapeHtml(card.selection)
+  // 挖空在未转义的原文上定位，由 buildClozeSentence 内部分段转义
+  const cloze = buildClozeSentence(card.sentence, card.selection, card.sentenceOffset ?? -1)
 
   return {
     Word: escapeHtml(card.entry.word),
     Reading: escapeHtml(card.entry.reading),
     PartOfSpeech: escapeHtml(card.entry.partOfSpeech),
     Definition: escapeHtml(card.entry.definition),
-    Sentence: s.anki.clozeContext ? buildClozeSentence(sentence, selection) : sentence,
-    SentencePlain: sentence,
+    Sentence: s.anki.clozeContext ? cloze : escapeHtml(card.sentence),
+    SentencePlain: escapeHtml(card.sentence),
     SentenceTranslation: escapeHtml(card.entry.contextTranslation),
     Source: card.pageUrl
       ? `<a href="${escapeHtml(card.pageUrl)}">${escapeHtml(card.pageTitle || card.pageUrl)}</a>`

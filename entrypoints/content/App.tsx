@@ -1,5 +1,6 @@
 import { Check, Sparkles, Volume2, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { resolveOffset } from '@/lib/anki'
 import type { MtProvider } from '@/lib/machine-translate'
 import { MT_PROVIDER_LABELS } from '@/lib/machine-translate'
 import { sendMessage } from '@/lib/messaging'
@@ -73,16 +74,17 @@ function place(rect: DOMRect, width: number, height: number) {
   return { left, top }
 }
 
-/** 把原句里的目标词标出来，让"这个词在这句话里"一眼可见 */
-function highlight(sentence: string, selection: string) {
-  const at = sentence.toLowerCase().indexOf(selection.trim().toLowerCase())
-  if (at === -1 || !selection.trim()) return sentence
+/** 标出原句里的目标词，用抽取时记下的精确偏移而不是重新查找 */
+function highlight(ctx: SelectionContext) {
+  const needle = ctx.selection.trim()
+  const at = resolveOffset(ctx.sentence, needle, ctx.offset)
+  if (at < 0) return ctx.sentence
 
   return (
     <>
-      {sentence.slice(0, at)}
-      <mark>{sentence.slice(at, at + selection.trim().length)}</mark>
-      {sentence.slice(at + selection.trim().length)}
+      {ctx.sentence.slice(0, at)}
+      <mark>{ctx.sentence.slice(at, at + needle.length)}</mark>
+      {ctx.sentence.slice(at + needle.length)}
     </>
   )
 }
@@ -204,6 +206,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         entry,
         selection: anchor.ctx.selection,
         sentence: anchor.ctx.sentence,
+        sentenceOffset: anchor.ctx.offset,
         pageUrl: location.href,
         pageTitle: document.title,
         createdAt: Date.now(),
@@ -248,12 +251,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     return (
       <div className="wc-root wc-layer" style={pos}>
         <div className="wc-pill">
-          <button title="免费机器翻译，即时出结果" onClick={() => void quickLookup(anchor.ctx)}>
+          <button title="机器翻译" onClick={() => void quickLookup(anchor.ctx)}>
             <Zap size={14} />
             <span>快译</span>
           </button>
           <div className="wc-pill-sep" />
-          <button title="AI 结合原句给出语境释义，可存入 Anki" onClick={() => void lookup(anchor.ctx)}>
+          <button title="AI 语境释义" onClick={() => void lookup(anchor.ctx)}>
             <Sparkles size={14} />
             <span>AI 详解</span>
           </button>
@@ -307,7 +310,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             <div className="wc-actions wc-actions-tight">
               <button
                 className="wc-btn wc-btn-ghost wc-btn-accent"
-                title="AI 结合原句给出语境释义"
+                title="AI 语境释义"
                 onClick={() => void lookup(anchor.ctx)}
               >
                 <Sparkles size={14} />
@@ -390,7 +393,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             <div className="wc-def">{phase.entry.definition}</div>
 
             <div className="wc-context">
-              <div>{highlight(anchor.ctx.sentence, anchor.ctx.selection)}</div>
+              <div>{highlight(anchor.ctx)}</div>
               {phase.entry.contextTranslation && (
                 <div className="wc-context-trans">{phase.entry.contextTranslation}</div>
               )}

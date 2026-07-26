@@ -49,11 +49,9 @@ export default function App() {
         </li>
       </ul>
 
-      <p className="tip">
-        {aiReady && anki.kind === 'ok'
-          ? '一切就绪。在任意网页上划选一个词即可开始。'
-          : '快速翻译随时可用；AI 详解和存卡需要先完成设置。'}
-      </p>
+      {!(aiReady && anki.kind === 'ok') && (
+        <p className="tip">快速翻译无需配置；AI 详解与存卡需要完成上述设置。</p>
+      )}
 
       <button className="btn" onClick={() => void browser.runtime.openOptionsPage()}>
         打开设置

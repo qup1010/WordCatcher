@@ -34,6 +34,7 @@ const sampleCard: CapturedCard = {
   },
   selection: 'devastated',
   sentence: 'He was devastated by the news.',
+  sentenceOffset: 'He was '.length,
   pageUrl: 'https://example.com',
   pageTitle: 'Example',
   createdAt: 0,

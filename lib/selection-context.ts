@@ -120,6 +120,14 @@ export interface SelectionContext {
   selection: string
   /** 划选所在的完整句子；抓不到时退化成划选文本本身 */
   sentence: string
+  /**
+   * selection 在 sentence 中的起始字符偏移。
+   *
+   * 这个值必须一路带到高亮和 Anki 挖空：靠 indexOf 重新查找会匹配到
+   * 第一个包含该子串的位置——划 "present" 会命中 "representation"，
+   * 于是高亮错位、卡片挖错词。
+   */
+  offset: number
 }
 
 export function extractContext(range: Range): SelectionContext | null {
@@ -134,7 +142,7 @@ export function extractContext(range: Range): SelectionContext | null {
 
   // 定位失败就老实退回划选文本，不要瞎猜一个句子出来
   if (start < 0 || end < 0 || start >= end) {
-    return { selection, sentence: selection }
+    return { selection, sentence: selection, offset: 0 }
   }
 
   let from = scanBackward(blockText, start)
@@ -147,8 +155,28 @@ export function extractContext(range: Range): SelectionContext | null {
     to = Math.min(to, end + Math.max(pad, 0))
   }
 
-  const sentence = collapseWhitespace(blockText.slice(from, to))
-  return { selection, sentence: sentence || selection }
+  // 分三段压缩空白，这样选区的偏移在压缩后仍然算得准；
+  // 整句一次性压缩会让偏移失去意义。
+  const rawBefore = blockText.slice(from, start)
+  const rawSel = blockText.slice(start, end)
+  const rawAfter = blockText.slice(end, to)
+
+  const before = collapseWhitespace(rawBefore)
+  const middle = collapseWhitespace(rawSel)
+  const after = collapseWhitespace(rawAfter)
+
+  // collapseWhitespace 会 trim 掉两端，被吃掉的分词空格要补回来
+  const gapBefore = before && middle && /\s$/.test(rawBefore) ? ' ' : ''
+  const gapAfter = middle && after && /^\s/.test(rawAfter) ? ' ' : ''
+
+  const sentence = before + gapBefore + middle + gapAfter + after
+  if (!sentence) return { selection, sentence: selection, offset: 0 }
+
+  return {
+    selection: middle || selection,
+    sentence,
+    offset: before.length + gapBefore.length,
+  }
 }
 
 export function getCurrentContext(): SelectionContext | null {

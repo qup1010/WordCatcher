@@ -33,6 +33,8 @@ export interface CapturedCard {
   selection: string
   /** 从 DOM 抓到的完整原句 */
   sentence: string
+  /** selection 在 sentence 中的精确偏移，挖空时用它而不是重新查找 */
+  sentenceOffset: number
   pageUrl: string
   pageTitle: string
   createdAt: number

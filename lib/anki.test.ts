@@ -13,6 +13,7 @@ function card(over: Partial<CapturedCard> = {}): CapturedCard {
     },
     selection: 'devastated',
     sentence: 'He was devastated by the news.',
+    sentenceOffset: 'He was '.length,
     pageUrl: 'https://example.com/article',
     pageTitle: 'An Article',
     createdAt: 0,
@@ -26,29 +27,50 @@ function settings(over: Partial<Settings['anki']> = {}): Settings {
 
 describe('buildClozeSentence', () => {
   it('把目标词替换成空位', () => {
+    const out = buildClozeSentence('He was devastated by the news.', 'devastated', 7)
+    expect(out).toBe('He was <span class="wc-blank">[&nbsp;?&nbsp;]</span> by the news.')
+  })
+
+  it('按偏移挖空，不会命中包含该子串的更长单词', () => {
+    // 真实场景：划的是句尾的 present，但 representation 里也有 present
+    const sentence = 'A representation of X at the present moment.'
+    const offset = sentence.lastIndexOf('present')
+
+    const out = buildClozeSentence(sentence, 'present', offset)
+    expect(out).toBe('A representation of X at the <span class="wc-blank">[&nbsp;?&nbsp;]</span> moment.')
+    expect(out).toContain('representation') // 前面那个必须原样保留
+  })
+
+  it('没有偏移时退回查找（兼容旧数据）', () => {
     const out = buildClozeSentence('He was devastated by the news.', 'devastated')
+    expect(out).toContain('wc-blank')
+  })
+
+  it('偏移对不上时退回查找，不会挖到错误位置', () => {
+    const out = buildClozeSentence('He was devastated by the news.', 'devastated', 999)
     expect(out).toBe('He was <span class="wc-blank">[&nbsp;?&nbsp;]</span> by the news.')
   })
 
   it('大小写不一致时仍能挖空', () => {
-    const out = buildClozeSentence('Devastated, he left the room.', 'devastated')
+    const out = buildClozeSentence('Devastated, he left the room.', 'devastated', -1)
     expect(out).toContain('wc-blank')
     expect(out).toContain(', he left the room.')
   })
 
   it('目标词不在句子里时原样返回，不瞎挖', () => {
     const sentence = 'A completely unrelated sentence.'
-    expect(buildClozeSentence(sentence, 'devastated')).toBe(sentence)
+    expect(buildClozeSentence(sentence, 'devastated', -1)).toBe(sentence)
   })
 
   it('划选为空时原样返回', () => {
     const sentence = 'Nothing selected here.'
-    expect(buildClozeSentence(sentence, '   ')).toBe(sentence)
+    expect(buildClozeSentence(sentence, '   ', -1)).toBe(sentence)
   })
 
-  it('只替换第一次出现，不会把整句挖成筛子', () => {
-    const out = buildClozeSentence('The bank is next to the bank.', 'bank')
+  it('只替换一处，不会把整句挖成筛子', () => {
+    const out = buildClozeSentence('The bank is next to the bank.', 'bank', 4)
     expect(out.match(/wc-blank/g)).toHaveLength(1)
+    expect(out).toContain('next to the bank.')
   })
 })
 
@@ -86,11 +108,27 @@ describe('buildNoteFields', () => {
       card({
         sentence: 'Tom & Jerry are on TV.',
         selection: 'Tom & Jerry',
+        sentenceOffset: 0,
       }),
       settings({ clozeContext: true }),
     )
     expect(fields.Sentence).toContain('wc-blank')
     expect(fields.Sentence).toContain('are on TV.')
+  })
+
+  it('按偏移挖空，不会挖到更长单词里的同名子串', () => {
+    const sentence = 'A representation of X at the present moment.'
+    const fields = buildNoteFields(
+      card({
+        sentence,
+        selection: 'present',
+        sentenceOffset: sentence.lastIndexOf('present'),
+        entry: { ...card().entry, word: 'present' },
+      }),
+      settings({ clozeContext: true }),
+    )
+    expect(fields.Sentence).toContain('representation')
+    expect(fields.Sentence).toContain('at the <span class="wc-blank">')
   })
 
   it('来源渲染成链接并转义 URL', () => {
