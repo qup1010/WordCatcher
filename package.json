@@ -1,0 +1,38 @@
+{
+  "name": "word-catcher",
+  "description": "划词 → AI 结合上下文解释 → 一键存入 Anki",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "compile": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.14",
+    "ai": "^7.0.37",
+    "lucide-react": "^1.27.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "^4.1.10",
+    "@wxt-dev/module-react": "^1.1.5",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
+    "wxt": "^0.20.27"
+  }
+}

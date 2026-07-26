@@ -1,0 +1,39 @@
+:root {
+  color-scheme: light dark;
+
+  --paper: #fdfcf9;
+  --ink: #221f1a;
+  --ink-soft: #6d675d;
+  --ink-faint: #a39c8f;
+  --hairline: #e8e3d9;
+  --teal: #0e6f63;
+  --teal-deep: #0a544b;
+  --danger: #a83232;
+
+  --font-serif: Georgia, "Iowan Old Style", "Times New Roman", "Noto Serif SC", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background-color: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #23211d;
+    --ink: #ece7dd;
+    --ink-soft: #a89f90;
+    --ink-faint: #776f61;
+    --hairline: #3a362e;
+    --teal: #4fd1bb;
+    --teal-deep: #7be0cd;
+    --danger: #e58a8a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
