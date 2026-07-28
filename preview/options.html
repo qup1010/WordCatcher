@@ -1,0 +1,199 @@
+<!doctype html>
+<!--
+  设置页的一屏全貌。真实页面在扩展外读不到配置会直接白屏，所以复刻一份。
+  改了 sections/ 下的结构记得同步过来。
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>设置页 · 样式预览</title>
+<link rel="stylesheet" href="/css/options.css">
+<link rel="stylesheet" href="/css/preview.css">
+</head>
+<body>
+<div class="page">
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-word">word·<em>catcher</em></div>
+      <div class="brand-meta">
+        <span class="brand-reading">/wɜːd ˈkætʃə(r)/</span>
+        <span class="brand-pos">n.</span>
+      </div>
+      <p class="brand-def">网页划词，快速翻译或 AI 语境详解，存入 Anki。</p>
+    </div>
+    <nav>
+      <a href="#" class="nav-on">AI 接口</a>
+      <a href="#">快速翻译</a>
+      <a href="#">Anki 单词本</a>
+      <a href="#">划词与朗读</a>
+    </nav>
+    <div class="side-status">
+      <div class="status-row"><span>AI 接口</span><span class="chip chip-ok">已配置</span></div>
+      <div class="status-row"><span>Anki</span><span class="chip chip-bad">未连接</span></div>
+    </div>
+    <div class="save-note save-note-show"><span>已自动保存</span></div>
+  </aside>
+
+  <main>
+    <section id="sec-ai">
+      <h2>AI 接口</h2>
+      <p class="muted">用于 AI 详解。兼容 OpenAI 接口的服务均可，点击标签切换配置。</p>
+      <div class="card">
+        <div class="profiles">
+          <button class="profile-chip profile-on">默认</button>
+          <button class="profile-chip">DeepSeek</button>
+          <button class="profile-chip profile-add">+</button>
+        </div>
+
+        <label class="field"><span>配置名称</span><input value="默认"></label>
+        <label class="field"><span>服务商预设</span><select><option>选择后自动填入地址和模型…</option></select></label>
+        <label class="field"><span>Base URL</span><input value="https://api.deepseek.com/v1"></label>
+        <p class="hint">以 /v1 这类版本路径结尾。</p>
+        <label class="field"><span>API Key</span><input type="password" value="skxxxxxxxxxxx"></label>
+        <p class="hint">仅保存在本机浏览器里。</p>
+
+        <div class="field">
+          <span>模型</span>
+          <div class="combo"><input value="deepseek-v4-flash"><button class="combo-toggle">▾</button></div>
+          <button class="btn btn-icon"><span>拉取列表</span></button>
+        </div>
+        <label class="field"><span>释义语言</span><select><option>简体中文</option></select></label>
+        <p class="hint">同时用于快速翻译的目标语言。</p>
+
+        <div class="row"><button class="btn">测试 AI 并预览效果</button></div>
+
+        <div class="result">
+          <p class="ok">配置可用。这是它对示例句的实际输出：</p>
+          <div class="sample">
+            <div class="sample-src">He was <mark>devastated</mark> by the news.</div>
+            <div>
+              <span class="sample-word">devastate</span>
+              <span class="sample-reading"> /ˈdevəsteɪt/</span>
+              <span class="sample-pos"> v.</span>
+            </div>
+            <div>使（某人）极度震惊、悲痛</div>
+            <div class="sample-trans">这个消息让他极度震惊。</div>
+          </div>
+        </div>
+
+        <!-- 另一种测试结果：端点通但模型不支持结构化输出 -->
+        <div class="result">
+          <p class="warn">端点能连上，但这个模型吐不出结构化输出，AI 详解会一直报错。换个大一点的模型即可。</p>
+          <p class="hint">它对普通提问的回答是正常的：</p>
+          <div class="reply">极度震惊的</div>
+          <details>
+            <summary>原始报错</summary>
+            <div class="reply reply-quiet">No object generated: response did not match schema.</div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-mt">
+      <h2>快速翻译</h2>
+      <p class="muted">划词后点闪电使用，不消耗 AI 额度。所选服务失败时自动切换另一家。</p>
+      <div class="card">
+        <div class="field">
+          <span>翻译服务</span>
+          <div class="seg">
+            <button class="seg-on">微软翻译</button>
+            <button>谷歌翻译</button>
+          </div>
+        </div>
+        <p class="hint">谷歌翻译在部分网络环境下无法连接。</p>
+      </div>
+    </section>
+
+    <section id="sec-anki">
+      <h2>Anki 单词本</h2>
+      <p class="muted">卡片写入本地 Anki。需要 <a href="#">Anki 桌面版</a> 和 AnkiConnect 插件（附加组件代码 <code>2055492159</code>），使用时保持 Anki 运行。</p>
+      <div class="card">
+        <label class="field"><span>AnkiConnect 地址</span><input value="http://127.0.0.1:8765"></label>
+        <label class="field"><span>牌组</span><input value="Word Catcher"></label>
+        <p class="hint">不存在会自动创建。</p>
+        <div class="field">
+          <span>原句挖空</span>
+          <div class="field-inline">
+            <button class="switch switch-on"><span class="switch-knob"></span></button>
+            <span class="field-inline-label">卡片正面隐去原句中的目标词</span>
+          </div>
+        </div>
+        <div class="row"><button class="btn">测试连接并同步卡片模板</button></div>
+        <div class="err"><p>连不上 Anki。请确认 Anki 桌面版正在运行。</p></div>
+      </div>
+    </section>
+
+    <section id="sec-data">
+      <h2>数据与维护</h2>
+      <p class="muted">待写队列、AI 缓存和配置备份。平时不用管，出问题或者换机器时才需要。</p>
+      <div class="card">
+        <div class="block">
+          <div class="block-head">
+            <svg class="inline-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+            <strong>待写队列</strong>
+            <span class="chip">3</span>
+          </div>
+          <p class="block-hint">Anki 没开的时候存的词会先排在这里，等 Anki 起来了一次性补写，不会丢。</p>
+          <ul class="queue-list">
+            <li>
+              <div class="queue-item">
+                <span class="queue-word">devastate</span>
+                <span class="queue-def">使（某人）极度震惊、悲痛</span>
+              </div>
+              <span class="queue-time">7/26 21:04</span>
+              <button class="btn btn-icon btn-danger">✕</button>
+            </li>
+            <li>
+              <div class="queue-item">
+                <span class="queue-word">serendipity</span>
+                <span class="queue-def">意外发现珍奇事物的运气，这条释义特别长用来验证省略是否正常工作</span>
+              </div>
+              <span class="queue-time">7/26 20:51</span>
+              <button class="btn btn-icon btn-danger">✕</button>
+            </li>
+            <li>
+              <div class="queue-item">
+                <span class="queue-word">a blessing in disguise</span>
+                <span class="queue-def">因祸得福</span>
+              </div>
+              <span class="queue-time">7/25 09:12</span>
+              <button class="btn btn-icon btn-danger">✕</button>
+            </li>
+          </ul>
+          <div class="block-actions">
+            <button class="btn">全部补写进 Anki</button>
+            <button class="btn">清空队列</button>
+          </div>
+          <p class="ok">写入 5 张，跳过 1 张重复的。</p>
+        </div>
+
+        <div class="block">
+          <div class="block-head">
+            <strong>AI 缓存</strong>
+            <span class="chip">12</span>
+          </div>
+          <p class="block-hint">同一个词在同一句话里反复划选不会重复请求 AI。缓存只在内存里，浏览器回收后台进程时自动清空。改了模型想立刻看到新结果时可以手动清一次。</p>
+          <div class="block-actions">
+            <button class="btn">清空缓存</button>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="block-head"><strong>配置备份</strong></div>
+          <p class="block-hint">换机器时把配置整份搬过去。<strong class="warn-inline">导出的文件里包含明文 API key</strong>，和 key 本身一样敏感，别随手发出去。</p>
+          <div class="block-actions">
+            <button class="btn btn-icon"><span>导出配置</span></button>
+            <button class="btn btn-icon"><span>导入配置</span></button>
+          </div>
+          <p class="err">这是「some-other-tool」的配置文件，不是 Word Catcher 的。</p>
+        </div>
+      </div>
+    </section>
+
+    <p class="foot-note">设置修改后自动保存并立即生效。</p>
+  </main>
+</div>
+</div>
+</body>
+</html>

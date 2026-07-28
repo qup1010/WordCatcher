@@ -1,0 +1,174 @@
+<!doctype html>
+<!--
+  popup 的几个状态。改了 popup/App.tsx 的结构记得同步过来。
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>popup · 样式预览</title>
+<link rel="stylesheet" href="/css/popup.css">
+<link rel="stylesheet" href="/css/preview.css">
+</head>
+<body>
+
+<div class="case">
+  <b>单套配置 · 一切正常</b>
+  <div class="popup-frame">
+    <div class="pop">
+      <div class="pop-brand">
+        <span class="pop-word">word·<em>catcher</em></span>
+        <span class="pop-pos">n.</span>
+      </div>
+      <ul class="checks">
+        <li class="ok">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>AI 接口</strong>
+            <p>默认 · deepseek-v4-flash</p>
+          </div>
+        </li>
+        <li class="ok">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>快速翻译</strong>
+            <div class="chips">
+              <button class="chip chip-on">微软翻译</button>
+              <button class="chip">谷歌翻译</button>
+            </div>
+            <p>连不上时自动切到另一家。</p>
+          </div>
+        </li>
+        <li class="ok">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>Anki</strong>
+            <p>已连接 · 牌组「Word Catcher」</p>
+          </div>
+        </li>
+      </ul>
+      <button class="btn">打开设置</button>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>多套配置 · 可切换</b>
+  <div class="popup-frame">
+    <div class="pop">
+      <div class="pop-brand">
+        <span class="pop-word">word·<em>catcher</em></span>
+        <span class="pop-pos">n.</span>
+      </div>
+      <ul class="checks">
+        <li class="ok">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>AI 接口</strong>
+            <div class="chips">
+              <button class="chip chip-on">默认</button>
+              <button class="chip">DeepSeek</button>
+              <button class="chip">本地 Ollama</button>
+            </div>
+            <p>deepseek-v4-flash</p>
+          </div>
+        </li>
+        <li class="ok">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>快速翻译</strong>
+            <div class="chips">
+              <button class="chip">微软翻译</button>
+              <button class="chip chip-on">谷歌翻译</button>
+            </div>
+            <p>连不上时自动切到另一家。</p>
+          </div>
+        </li>
+        <li class="ok">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>Anki</strong>
+            <p>已连接 · 牌组「Word Catcher」</p>
+          </div>
+        </li>
+      </ul>
+      <button class="btn">打开设置</button>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>未配置 + 待写队列</b>
+  <div class="popup-frame">
+    <div class="pop">
+      <div class="pop-brand">
+        <span class="pop-word">word·<em>catcher</em></span>
+        <span class="pop-pos">n.</span>
+      </div>
+      <ul class="checks">
+        <li class="bad">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>AI 接口</strong>
+            <p>还没填 API key</p>
+          </div>
+        </li>
+        <li class="ok">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>快速翻译</strong>
+            <div class="chips">
+              <button class="chip chip-on">微软翻译</button>
+              <button class="chip">谷歌翻译</button>
+            </div>
+            <p>连不上时自动切到另一家。</p>
+          </div>
+        </li>
+        <li class="bad">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>Anki</strong>
+            <p>未连接，请打开 Anki 桌面版</p>
+          </div>
+        </li>
+      </ul>
+
+      <div class="queue">
+        <div class="queue-head">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          <span>3 张卡等着写入</span>
+        </div>
+        <p>Anki 没开的时候存的词都在这儿，开着 Anki 点一下就补写进去。</p>
+        <button class="btn btn-quiet">现在补写</button>
+      </div>
+
+      <p class="tip">快速翻译无需配置；AI 详解与存卡需要完成上述设置。</p>
+      <button class="btn">打开设置</button>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>补写结果</b>
+  <div class="popup-frame">
+    <div class="pop">
+      <div class="pop-brand">
+        <span class="pop-word">word·<em>catcher</em></span>
+        <span class="pop-pos">n.</span>
+      </div>
+      <ul class="checks">
+        <li class="ok">
+          <span class="dot"></span>
+          <div class="check-body">
+            <strong>Anki</strong>
+            <p>已连接 · 牌组「Word Catcher」</p>
+          </div>
+        </li>
+      </ul>
+      <p class="queue-note">写入 5 张，跳过 1 张重复的。</p>
+      <button class="btn">打开设置</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,3 +1,4 @@
+import { TIMEOUT, isTimeout, timeout } from './net'
 import type { CapturedCard, Settings } from './types'
 
 /**
@@ -39,10 +40,14 @@ async function invoke<T>(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, version: 6, params }),
+      signal: timeout(TIMEOUT.anki),
     })
-  } catch {
+  } catch (err) {
     throw new AnkiError(
-      '连不上 Anki。请确认 Anki 桌面版正在运行，且已安装 AnkiConnect 插件。',
+      isTimeout(err)
+        // 本地请求正常是毫秒级，超时几乎只有一个原因：Anki 被模态框卡住了
+        ? `Anki 超过 ${TIMEOUT.anki / 1000} 秒没有响应。切到 Anki 窗口看看是不是有对话框等着确认。`
+        : '连不上 Anki。请确认 Anki 桌面版正在运行，且已安装 AnkiConnect 插件。',
       'unreachable',
     )
   }
@@ -58,6 +63,37 @@ async function invoke<T>(
 
 export async function checkConnection(url: string): Promise<number> {
   return invoke<number>(url, 'version')
+}
+
+/**
+ * 转义 Anki 搜索语法里的元字符。
+ *
+ * `*` 和 `_` 是通配符，`"` 会截断搜索词，`\` 是转义符本身。
+ * 不转义的话，划到「*」开头的词会把整个牌组匹配出来，误报成"已收藏"。
+ */
+export function escapeQuery(value: string): string {
+  return value.replace(/[\\"*_:]/g, ch => `\\${ch}`)
+}
+
+/**
+ * 这个词是不是已经在牌组里了。
+ *
+ * 用途是在存卡之前就把「已收藏」显示出来——等点了保存才被 Anki 以
+ * duplicate 拒绝，用户已经白白读完一遍面板了。
+ *
+ * 查重口径和 addNote 的 duplicateScope 保持一致：同牌组 + 同笔记类型 + 首字段相同。
+ */
+export async function findExisting(word: string, s: Settings): Promise<number[]> {
+  const needle = word.trim()
+  if (!needle) return []
+
+  const query = [
+    `"deck:${escapeQuery(s.anki.deckName)}"`,
+    `"note:${escapeQuery(s.anki.noteTypeName)}"`,
+    `"Word:${escapeQuery(needle)}"`,
+  ].join(' ')
+
+  return invoke<number[]>(s.anki.url, 'findNotes', { query })
 }
 
 /** 把原句里的目标词换成空格，正面才有"在语境中回忆"的效果 */

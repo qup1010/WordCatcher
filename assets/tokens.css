@@ -1,0 +1,96 @@
+/*
+ * 全局设计令牌 —— 划词面板、设置页、popup 三处共用这一份。
+ *
+ * 为什么用 `:root, .wc-root` 这个选择器列表：
+ * 设置页和 popup 是普通页面，令牌挂在 :root 上；划词面板跑在 Shadow DOM 里，
+ * 而且根节点带 `all: initial`，所以令牌必须挂在 .wc-root 自己身上。
+ * 两个选择器写在一起，三个入口就能 @import 同一个文件，不用各抄一份——
+ * 抄三份的下场已经见过了：--paper 在三处漂成了 #fdfcf9 / #faf8f3 / #fdfcf9
+ * 三个值，同一个"暖纸色"在三个界面里其实是三种颜色。
+ *
+ * 视觉语言：纸质词典。暖纸底、墨色字、墨青强调、琥珀高亮、发丝线分隔。
+ */
+
+:root, .wc-root {
+  /* ── 表面：三层，从后往前 ── */
+  /** 页面底色，卡片后面那一层 */
+  --paper: #faf8f3;
+  /** 浮起的表面：设置页的卡片、划词面板、popup 本体 */
+  --card: #fffefb;
+  /** 凹陷：卡片里的输入框、次级按钮的 hover 底 */
+  --sunken: #f2efe8;
+
+  /* ── 墨色：三级对比度 ── */
+  --ink: #221f1a;
+  --ink-soft: #6d675d;
+  --ink-faint: #a39c8f;
+  --hairline: #e8e3d9;
+
+  /* ── 强调 ── */
+  --teal: #0e6f63;
+  --teal-deep: #0a544b;
+  /** 青色的极淡底，用于选中态、hover、代码块 */
+  --teal-wash: #eaf3f0;
+  /** 只用在"被划中的那个词"上：原句高亮、卡片挖空、图标里的划线 */
+  --amber: #b45309;
+  --danger: #a83232;
+  /** 红色的极淡底，和 --teal-wash 对称 */
+  --danger-wash: rgb(168 50 50 / 0.1);
+  /** 深色下按钮上的文字色。青色变亮之后白字就看不清了 */
+  --on-teal: #ffffff;
+
+  /* ── 圆角 ── */
+  --r-sm: 6px;   /* 图标按钮、列表项 */
+  --r-md: 9px;   /* 按钮、输入框 */
+  --r-lg: 13px;  /* 面板、卡片 */
+  --r-pill: 999px;
+
+  /* ── 阴影 ── */
+  /** 贴在页面上的卡片，几乎不离地 */
+  --shadow-card: 0 1px 2px rgb(60 50 30 / 0.04), 0 1px 12px rgb(60 50 30 / 0.05);
+  /** 悬浮在网页之上的划词面板，要明确"我不属于这一页" */
+  --shadow-float:
+    0 0 0 1px rgb(60 50 30 / 0.06),
+    0 2px 6px rgb(60 50 30 / 0.07),
+    0 12px 32px rgb(60 50 30 / 0.14);
+  /** 下拉列表 */
+  --shadow-pop: 0 8px 26px rgb(60 50 30 / 0.16);
+  /** 分段控件里那个凸起的小块 */
+  --shadow-raise: 0 1px 3px rgb(60 50 30 / 0.12);
+
+  /* ── 字体 ── */
+  --font-serif: Georgia, "Iowan Old Style", "Times New Roman", "Noto Serif SC", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root, .wc-root {
+    --paper: #1d1b18;
+    --card: #23211d;
+    --sunken: #2d2a25;
+
+    --ink: #ece7dd;
+    --ink-soft: #a89f90;
+    --ink-faint: #776f61;
+    --hairline: #3a362e;
+
+    --teal: #4fd1bb;
+    --teal-deep: #7be0cd;
+    --teal-wash: rgb(79 209 187 / 0.12);
+    --amber: #e8a94e;
+    --danger: #e58a8a;
+    --danger-wash: rgb(229 138 138 / 0.14);
+    /* 亮青底上必须用暗字，白字会糊成一片 */
+    --on-teal: #10201c;
+
+    /* 暖色阴影在深底上等于没有，全部换成黑色 */
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.25), 0 1px 12px rgb(0 0 0 / 0.2);
+    --shadow-float:
+      0 0 0 1px rgb(0 0 0 / 0.4),
+      0 2px 6px rgb(0 0 0 / 0.35),
+      0 12px 32px rgb(0 0 0 / 0.5);
+    --shadow-pop: 0 8px 26px rgb(0 0 0 / 0.5);
+    --shadow-raise: 0 1px 3px rgb(0 0 0 / 0.4);
+  }
+}

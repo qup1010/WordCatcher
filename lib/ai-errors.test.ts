@@ -37,6 +37,26 @@ describe('friendlyMessage', () => {
     expect(friendlyMessage(new Error('404 model not found'))).toContain('模型名')
   })
 
+  it('光是 404 而没提模型时，指向 Base URL 而不是模型名', () => {
+    // 最常见的 404 其实是 Base URL 少写了 /v1，怪到模型头上会让人白折腾
+    const msg = friendlyMessage(new Error('404 Not Found'))
+    expect(msg).toContain('Base URL')
+    expect(msg).not.toContain('模型名')
+  })
+
+  it('只是顺带提到 model 的错误不算模型名错误', () => {
+    // 这个条件曾经写成 (404|not found|model) && model，等价于「只要含 model 就命中」，
+    // 于是一切提到 model 的报错都被翻译成「模型名不对」
+    const msg = friendlyMessage(new Error('This model\'s maximum context length is 8192 tokens'))
+    expect(msg).not.toContain('模型名不对')
+  })
+
+  it('超时单独成一类，不和「连不上」混为一谈', () => {
+    const msg = friendlyMessage(new DOMException('timeout', 'TimeoutError'))
+    expect(msg).toContain('没有响应')
+    expect(msg).not.toContain('Base URL')
+  })
+
   it('网络不通时指向 Base URL', () => {
     expect(friendlyMessage(new Error('fetch failed'))).toContain('Base URL')
   })

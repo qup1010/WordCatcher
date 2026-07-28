@@ -1,0 +1,27 @@
+<!--
+  16 / 32px 专用版。
+
+  小尺寸不能只是把大图缩小，两个原因：
+
+  1. 128 版的字号在 16px 下只剩 10 个像素高，双层 a 的字碗会糊成一团，
+     所以这里把字号放大到几乎顶格。注意刻意不加粗——小尺寸下加粗会把 a
+     中间那个孔填死，反而更难认，试过三个变体后常规字重最清楚。
+  2. 更要命的是对齐：128 版的划线在 y=97，换算到 16px 网格是第 12.1 行，
+     正好压在半个像素上，抗锯齿之后会从琥珀色晕成一条脏橄榄色。
+
+  所以这一版所有关键边都对齐到 8 的倍数——16px 下 1 个设备像素 = 8 个 SVG 单位，
+  对齐之后划线落在完整的第 12、13 行上，颜色是干净的。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="16" fill="#0e6f63" />
+
+  <text
+    x="64" y="88"
+    font-family="Georgia, 'Iowan Old Style', 'Times New Roman', serif"
+    font-size="112"
+    fill="#fdfcf9"
+    text-anchor="middle"
+  >a</text>
+
+  <rect x="16" y="96" width="96" height="16" fill="#e8a94e" />
+</svg>

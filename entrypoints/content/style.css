@@ -1,3 +1,5 @@
+@import '@/assets/tokens.css';
+
 /*
  * Word Catcher 内容脚本 UI —— 「纸质词典卡片」
  *
@@ -8,28 +10,12 @@
  */
 
 .wc-root {
+  /*
+   * all: initial 是这个 UI 能在任意网页上长得一样的前提——宿主页面的
+   * 字体、行高、颜色都进不来。注意它不会重置自定义属性，所以 tokens.css
+   * 里的令牌照常生效。
+   */
   all: initial;
-
-  /* 色板 —— 暖纸 + 墨 + 青 */
-  --paper: #fdfcf9;
-  --paper-dim: #f5f2ec;
-  --ink: #221f1a;
-  --ink-soft: #6d675d;
-  --ink-faint: #a39c8f;
-  --hairline: #e8e3d9;
-  --teal: #0e6f63;
-  --teal-deep: #0a544b;
-  --teal-wash: #eaf3f0;
-  --amber: #b45309;
-  --danger: #a83232;
-
-  --font-serif: Georgia, "Iowan Old Style", "Times New Roman", "Noto Serif SC", serif;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-
-  --shadow-float:
-    0 0 0 1px rgb(60 50 30 / 0.06),
-    0 2px 6px rgb(60 50 30 / 0.07),
-    0 12px 32px rgb(60 50 30 / 0.14);
 
   font-family: var(--font-sans);
   font-size: 14px;
@@ -64,8 +50,8 @@
   display: flex;
   align-items: stretch;
   height: 34px;
-  background: var(--paper);
-  border-radius: 10px;
+  background: var(--card);
+  border-radius: var(--r-md);
   box-shadow: var(--shadow-float);
   overflow: hidden;
   animation: wc-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
@@ -106,15 +92,33 @@
 
 .wc-panel {
   width: 372px;
+  /* max-height 由 place() 按视口剩余空间算好后从行内传进来，这里只是兜底 */
   max-height: 460px;
   overflow-y: auto;
-  background: var(--paper);
-  border-radius: 13px;
+  overscroll-behavior: contain; /* 面板滚到头时别把宿主页面带着一起滚 */
+  background: var(--card);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-float);
   padding: 16px 18px 13px;
   box-sizing: border-box;
   animation: wc-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+
+  /* 宿主页面的默认滚动条在暖纸底上很扎眼，换成发丝色细条 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline) transparent;
 }
+
+.wc-panel::-webkit-scrollbar { width: 8px; }
+.wc-panel::-webkit-scrollbar-track { background: transparent; }
+
+.wc-panel::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 4px;
+}
+
+.wc-panel::-webkit-scrollbar-thumb:hover { background-color: var(--ink-faint); }
 
 .wc-panel-quick {
   width: 304px;
@@ -156,6 +160,15 @@
   animation: wc-breathe 1.1s ease-in-out infinite;
 }
 
+/* 骨架屏下方的那行说明：主角是骨架，文字退到配角位 */
+.wc-state-quiet {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
 .wc-dots i:nth-child(2) { animation-delay: 0.18s; }
 .wc-dots i:nth-child(3) { animation-delay: 0.36s; }
 
@@ -163,6 +176,45 @@
   0%, 100% { opacity: 0.25; transform: translateY(0); }
   40% { opacity: 1; transform: translateY(-2px); }
 }
+
+/* ── 骨架屏：照着词条的真实形状排 ────────────────── */
+
+.wc-sk-bar {
+  height: 11px;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--sunken) 0%,
+    var(--hairline) 40%,
+    var(--sunken) 80%
+  );
+  background-size: 220% 100%;
+  animation: wc-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes wc-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -80% 0; }
+}
+
+/* 词头更高更短，一眼能认出"这里会出现一个词" */
+.wc-sk-word {
+  width: 42%;
+  height: 21px;
+  border-radius: 6px;
+}
+
+.wc-sk-def { width: 100%; margin-top: 15px; }
+.wc-sk-def-2 { width: 64%; margin-top: 8px; }
+
+.wc-sk-quote {
+  margin-top: 16px;
+  padding: 4px 0 4px 13px;
+  border-left: 2px solid var(--hairline);
+}
+
+.wc-sk-quote .wc-sk-bar { width: 100%; height: 9px; }
+.wc-sk-quote .wc-sk-short { width: 46%; margin-top: 7px; }
 
 /* ── 词条头：仿词典排版 ─────────────────────────── */
 
@@ -172,6 +224,9 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* 词头里的 .wc-spacer 要能把标签推到右端 */
+.wc-head .wc-spacer { min-width: 8px; }
 
 .wc-word {
   font-family: var(--font-serif);
@@ -201,7 +256,7 @@
   background: transparent;
   cursor: pointer;
   padding: 4px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   line-height: 0;
   display: inline-flex;
   color: var(--ink-faint);
@@ -218,6 +273,23 @@
   font-size: 15px;
   line-height: 1.7;
   color: var(--ink);
+}
+
+/* 流式生成时跟在文字末尾的光标，暗示"还在写" */
+.wc-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--teal);
+  animation: wc-blink 1s step-end infinite;
+}
+
+@keyframes wc-blink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 /* ── 原句引用 ──────────────────────────────────── */
@@ -247,38 +319,53 @@
 
 /* ── 快译迷你卡 ────────────────────────────────── */
 
-.wc-quick-head {
-  display: flex;
+/*
+ * 快译面板以前是另起一套排版（16px 词头、独占一行的服务商标注）。
+ * 现在共用 .wc-head / .wc-word / .wc-def，只把词头缩一号——
+ * 同一个词在两个面板里应该长得像同一个词，只是详略不同。
+ */
+/*
+ * 快译词头不折行：词、试听、服务商标签必须排在同一行。
+ * .wc-head 默认带 flex-wrap 是给 AI 面板用的（词 + 音标 + 词性可能排不下），
+ * 但快译面板只有 304px 宽，一折行标签就掉到正文上方，看着像译文的标题。
+ * 这里让词自己在盒子内换行，把标签钉死在右端。
+ */
+.wc-panel-quick .wc-head {
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 5px;
 }
 
-.wc-quick-word {
-  font-family: var(--font-serif);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ink);
-  word-break: break-word;
+/*
+ * 不用 flex: 1——让词按自然宽度排，剩余空间交给 .wc-spacer。
+ * 给它 grow 的话，词会被拉宽到贴住标签，再长一点就从字母中间断开了。
+ */
+.wc-word-sm {
+  font-size: 20px;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
-.wc-quick-trans {
-  font-size: 15px;
-  line-height: 1.65;
-  color: var(--ink);
-  word-break: break-word;
-}
-
-.wc-caption {
-  font-size: 11px;
-  letter-spacing: 0.03em;
+/* 服务商之类的元信息标签，收在词头行右端 */
+.wc-tag {
+  /*
+   * 不参与收缩：内容固定是四个汉字，缩起来只会变成「谷歌...」这种没意义的省略。
+   * 空间不够时该让位的是词头——它有 word-break 兜底，按空格换行即可。
+   */
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  /* 用描边而不是填充：--sunken 压在 --card 上几乎看不出这是个标签 */
+  border: 1px solid var(--hairline);
   color: var(--ink-faint);
+  font-size: 11px;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
-.wc-caption-block {
-  margin-top: 5px;
-  white-space: normal;
+/* 首选服务没连上、自动切到了另一家——用颜色提示，别用文字占宽度 */
+.wc-tag-alt {
+  border-color: var(--amber);
+  color: var(--amber);
 }
 
 /* ── 动作区 ────────────────────────────────────── */
@@ -300,7 +387,7 @@
 
 .wc-btn {
   border: none;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   padding: 7px 14px;
   font-family: var(--font-sans);
   font-size: 13px;
@@ -316,13 +403,14 @@
 
 .wc-btn-primary {
   background: var(--teal);
-  color: #fff;
+  /* 深色下青色会变亮，白字就糊了——文字色交给 --on-teal 令牌 */
+  color: var(--on-teal);
 }
 
 .wc-btn-primary:hover:not(:disabled) { background: var(--teal-deep); }
 
 .wc-btn-primary:disabled {
-  background: var(--paper-dim);
+  background: var(--sunken);
   color: var(--ink-faint);
   cursor: default;
 }
@@ -332,7 +420,7 @@
   color: var(--ink-soft);
 }
 
-.wc-btn-ghost:hover { background: var(--paper-dim); }
+.wc-btn-ghost:hover { background: var(--sunken); }
 
 .wc-btn-accent {
   display: inline-flex;
@@ -383,32 +471,40 @@
   cursor: pointer;
 }
 
-/* ── 深色：暖炭底 + 青瓷强调 ─────────────────────── */
+/* ── 键盘可达性 ────────────────────────────────── */
 
-@media (prefers-color-scheme: dark) {
-  .wc-root {
-    --paper: #23211d;
-    --paper-dim: #2d2a25;
-    --ink: #ece7dd;
-    --ink-soft: #a89f90;
-    --ink-faint: #776f61;
-    --hairline: #3a362e;
-    --teal: #4fd1bb;
-    --teal-deep: #7be0cd;
-    --teal-wash: rgb(79 209 187 / 0.12);
-    --amber: #e8a94e;
-    --danger: #e58a8a;
+/*
+ * .wc-root 上的 `all: initial` 会把浏览器默认焦点环一起抹掉，
+ * 于是 Tab 到按钮上完全没有反馈。统一补一个，只在键盘操作时出现。
+ */
+.wc-root :focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
 
-    --shadow-float:
-      0 0 0 1px rgb(0 0 0 / 0.4),
-      0 2px 6px rgb(0 0 0 / 0.35),
-      0 12px 32px rgb(0 0 0 / 0.5);
+/* ── 动效降级 ──────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .wc-pill,
+  .wc-panel,
+  .wc-fade {
+    animation: none;
   }
 
-  .wc-btn-primary {
-    background: var(--teal);
-    color: #10201c;
+  /* 呼吸点和微光换成静态：加载状态还是要有，只是不再动 */
+  .wc-dots i {
+    animation: none;
+    opacity: 0.55;
   }
 
-  .wc-btn-primary:hover:not(:disabled) { background: var(--teal-deep); }
+  .wc-sk-bar {
+    animation: none;
+    background: var(--sunken);
+  }
+
+  /* 光标不闪，但要留着——它是"还在生成"的唯一提示 */
+  .wc-caret { animation: none; }
+
+  .wc-btn:active { transform: none; }
 }

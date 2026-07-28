@@ -1,41 +1,19 @@
+@import '@/assets/tokens.css';
+
 /*
  * 设置页 —— 整页布局：左侧品牌与导航，右侧内容。
- * 与划词卡片同一套「纸质词典」语言：暖纸、墨字、青强调、发丝线。
+ * 配色与圆角全部来自 tokens.css，和划词面板、popup 共用一套。
  */
 
+/*
+ * 表单布局的度量。刻意留在这里而不是进 tokens.css：
+ * 只有设置页是"左标签右控件"的两栏表单，划词面板和 popup 都用不上。
+ */
 :root {
-  color-scheme: light dark;
-
-  --paper: #faf8f3;
-  --card: #fffefb;
-  --ink: #221f1a;
-  --ink-soft: #6d675d;
-  --ink-faint: #a39c8f;
-  --hairline: #e8e3d9;
-  --teal: #0e6f63;
-  --teal-deep: #0a544b;
-  --teal-wash: #eaf3f0;
-  --amber: #b45309;
-  --danger: #a83232;
-
-  --font-serif: Georgia, "Iowan Old Style", "Times New Roman", "Noto Serif SC", serif;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #1d1b18;
-    --card: #23211d;
-    --ink: #ece7dd;
-    --ink-soft: #a89f90;
-    --ink-faint: #776f61;
-    --hairline: #3a362e;
-    --teal: #4fd1bb;
-    --teal-deep: #7be0cd;
-    --teal-wash: rgb(79 209 187 / 0.12);
-    --amber: #e8a94e;
-    --danger: #e58a8a;
-  }
+  --label-w: 128px;
+  --field-gap: 14px;
+  /* 说明文字、按钮行、测试结果都靠它对齐到控件那一列 */
+  --field-indent: calc(var(--label-w) + var(--field-gap));
 }
 
 * { box-sizing: border-box; }
@@ -62,16 +40,6 @@ body {
   max-width: 1000px;
   margin: 0 auto;
   padding: 56px 32px 96px;
-}
-
-@media (max-width: 860px) {
-  .shell {
-    grid-template-columns: 1fr;
-    gap: 32px;
-    padding: 32px 20px 72px;
-  }
-  .side { position: static; }
-  .side nav { display: none; }
 }
 
 /* ── 侧边栏 ───────────────────────────────────── */
@@ -204,7 +172,34 @@ main section {
   scroll-margin-top: 40px;
 }
 
-main section + section { margin-top: 52px; }
+main section + section { margin-top: 44px; }
+
+/* 表单卡片：把每个分区的字段从背景纸上抬起来，扫一眼就知道边界在哪 */
+.card {
+  margin-top: 18px;
+  padding: 22px 24px 20px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/*
+ * 卡片里的垂直节奏统一在这里定，不再让每个元素自己带 margin-bottom。
+ *
+ * 以前 .hint 是靠 margin-top: -8px 把自己拽回上一个字段旁边的：它先吃掉
+ * .field 的 14px 下边距，再补回 6px 的实际间距。这种写法的问题是间距由
+ * 两个元素合谋决定——中间插一个元素、或者某个字段不带 hint，位置就崩了。
+ * 改成由容器统一描述"相邻元素之间隔多远"，加删元素都不会错位。
+ */
+.card > * { margin-top: 14px; }
+.card > :first-child { margin-top: 0; }
+
+/* 说明文字紧贴它解释的那个字段，明显比字段间距近 */
+.card > .hint { margin-top: 6px; }
+
+/* 按钮行和上面的表单之间多给一点气口 */
+.card > .row { margin-top: 20px; }
 
 section h2 {
   margin: 0;
@@ -213,13 +208,11 @@ section h2 {
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--ink);
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--hairline);
 }
 
 .muted {
   color: var(--ink-soft);
-  margin: 12px 0 20px;
+  margin: 6px 0 0;
   font-size: 13.5px;
 }
 
@@ -231,29 +224,28 @@ section a {
 
 .chip {
   padding: 1px 9px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-size: 11.5px;
   font-weight: 550;
   letter-spacing: 0.04em;
-  background: var(--paper);
+  background: var(--sunken);
   border: 1px solid var(--hairline);
   color: var(--ink-faint);
 }
 
 .chip-ok { background: var(--teal-wash); border-color: transparent; color: var(--teal); }
-.chip-bad { background: rgb(168 50 50 / 0.1); border-color: transparent; color: var(--danger); }
+.chip-bad { background: var(--danger-wash); border-color: transparent; color: var(--danger); }
 
 /* ── 表单 ─────────────────────────────────────── */
 
 .field {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: var(--field-gap);
 }
 
 .field > span:first-child {
-  width: 128px;
+  width: var(--label-w);
   flex-shrink: 0;
   text-align: right;
   font-size: 13px;
@@ -266,8 +258,9 @@ section a {
   min-width: 0;
   padding: 8px 12px;
   border: 1px solid var(--hairline);
-  border-radius: 9px;
-  background: var(--card);
+  border-radius: var(--r-md);
+  /* 卡片本身已经是 --card，输入框再用同色就分不出来了，退回纸色 */
+  background: var(--sunken);
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 13.5px;
@@ -302,8 +295,9 @@ section a {
   color: var(--ink);
 }
 
+/* 纵向间距交给 .card 的流式规则，这里只管跟控件列对齐 */
 .hint {
-  margin: -8px 0 14px 142px;
+  margin: 0 0 0 var(--field-indent);
   font-size: 12px;
   color: var(--ink-faint);
 }
@@ -311,10 +305,18 @@ section a {
 .hint-ok { color: var(--teal); }
 .hint-err { color: var(--danger); }
 
-.row { margin: 8px 0 0 142px; }
+.row { margin-left: var(--field-indent); }
+
+/* 测试结果整块跟着控件列对齐 */
+.result { margin-left: var(--field-indent); }
+.result > * { margin-top: 10px; }
+.result > :first-child { margin-top: 0; }
+
+/* 容器已经缩进过了，里面的说明再缩一次会被推到右边去 */
+.result .hint { margin-left: 0; }
 
 code {
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px;
   background: var(--teal-wash);
   color: var(--teal);
@@ -334,14 +336,13 @@ code {
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
-  margin-bottom: 16px;
 }
 
 .profile-chip {
   border: 1px solid var(--hairline);
   background: var(--card);
   color: var(--ink-soft);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 4px 14px;
   font-family: var(--font-sans);
   font-size: 12.5px;
@@ -354,16 +355,11 @@ code {
 .profile-on {
   background: var(--teal);
   border-color: var(--teal);
-  color: #fff;
+  color: var(--on-teal);
   font-weight: 550;
 }
 
-.profile-on:hover { border-color: var(--teal); color: #fff; }
-
-@media (prefers-color-scheme: dark) {
-  .profile-on { color: #10201c; }
-  .profile-on:hover { color: #10201c; }
-}
+.profile-on:hover { border-color: var(--teal); color: var(--on-teal); }
 
 .profile-add {
   display: inline-flex;
@@ -383,9 +379,9 @@ code {
 .seg {
   display: inline-flex;
   padding: 3px;
-  background: var(--paper);
+  background: var(--sunken);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   gap: 2px;
 }
 
@@ -407,7 +403,7 @@ code {
   background: var(--card);
   color: var(--teal);
   font-weight: 550;
-  box-shadow: 0 1px 3px rgb(60 50 30 / 0.12);
+  box-shadow: var(--shadow-raise);
 }
 
 /* ── 控件：可输入下拉 ──────────────────────────── */
@@ -455,13 +451,9 @@ code {
   list-style: none;
   background: var(--card);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
-  box-shadow: 0 8px 26px rgb(60 50 30 / 0.16);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
   animation: rise 0.14s ease both;
-}
-
-@media (prefers-color-scheme: dark) {
-  .combo-list { box-shadow: 0 8px 26px rgb(0 0 0 / 0.5); }
 }
 
 .combo-item {
@@ -470,7 +462,7 @@ code {
   justify-content: space-between;
   gap: 10px;
   padding: 6px 10px;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   font-size: 13px;
   color: var(--ink);
   cursor: pointer;
@@ -492,7 +484,7 @@ code {
   height: 22px;
   flex-shrink: 0;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--hairline);
   cursor: pointer;
   transition: background 0.18s ease;
@@ -508,8 +500,8 @@ code {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  background: var(--card);
+  box-shadow: var(--shadow-raise);
   transition: transform 0.18s cubic-bezier(0.3, 0.9, 0.4, 1.2);
 }
 
@@ -521,7 +513,7 @@ code {
   border: 1px solid var(--hairline);
   background: var(--card);
   color: var(--ink);
-  border-radius: 9px;
+  border-radius: var(--r-md);
   padding: 8px 16px;
   font-size: 13.5px;
   font-family: var(--font-sans);
@@ -547,8 +539,12 @@ code {
 
 /* ── 状态与测试结果 ────────────────────────────── */
 
-.ok { color: var(--teal); margin: 14px 0 0 142px; font-size: 13.5px; }
-.err { color: var(--danger); margin: 14px 0 0 142px; font-size: 13.5px; }
+.ok { color: var(--teal); margin: 0; font-size: 13.5px; }
+.err { color: var(--danger); margin: 0; font-size: 13.5px; }
+.warn { color: var(--amber); margin: 0; font-size: 13.5px; line-height: 1.65; }
+
+/* Anki 分区的测试结果直接摆在卡片里，上边距由 .card 给，这里只补缩进 */
+.card > .err, .card > .ok { margin-left: var(--field-indent); }
 
 .err ol { margin: 6px 0 0; padding-left: 20px; color: var(--ink); }
 .err li { margin-bottom: 4px; }
@@ -556,10 +552,9 @@ code {
 
 /* AI 测试的原始回复 */
 .reply {
-  margin-top: 8px;
   padding: 10px 14px;
   border-left: 2px solid var(--teal);
-  background: var(--card);
+  background: var(--sunken);
   border-radius: 0 8px 8px 0;
   color: var(--ink);
   font-size: 13.5px;
@@ -568,11 +563,16 @@ code {
   animation: rise 0.3s ease both;
 }
 
+.reply-quiet {
+  border-left-color: var(--hairline);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+
 .sample {
-  margin-top: 10px;
   border: 1px solid var(--hairline);
-  border-radius: 11px;
-  background: var(--card);
+  border-radius: var(--r-lg);
+  background: var(--sunken);
   padding: 14px 17px;
   color: var(--ink);
   font-size: 13.5px;
@@ -629,4 +629,233 @@ code {
   border-top: 1px solid var(--hairline);
   color: var(--ink-faint);
   font-size: 12.5px;
+}
+
+/*
+ * 窄屏：侧栏拆开摊到顶部，导航从竖排列表变成一条吸顶的横向 tab。
+ *
+ * 以前这里是 `.side nav { display: none }`——单栏之后内容被拉得很长，
+ * 恰恰是最需要跳转的时候，导航却没了。横排 tab 加 sticky 才算真的能用。
+ */
+@media (max-width: 860px) {
+  /*
+   * 单栏之后不再需要 grid，换成普通块流。这一步是 sticky 能不能生效的关键：
+   * position: sticky 只能在自己的包含块里滑动，nav 留在 .side 里的话，
+   * 包含块就是那个只有两三百像素高的侧栏，稍微一滚就跟着划走了。
+   * 用 display: contents 把 .side 这层盒子取消掉，nav 的包含块变成整个
+   * .shell，才能真的吸在页面顶部。
+   */
+  .shell {
+    display: block;
+    max-width: 720px;
+    padding: 28px 20px 72px;
+  }
+
+  .side {
+    display: contents;
+  }
+
+  /* .side 的 flex gap 随着盒子一起没了，间距改由各块自己带 */
+  .brand { margin-bottom: 18px; }
+  .side-status { margin-top: 22px; }
+
+  .side nav {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    flex-direction: row;
+    gap: 2px;
+    /* 竖排靠左边框分隔，横排换成底边框 */
+    border-left: none;
+    border-bottom: 1px solid var(--hairline);
+    /* 分区多了放不下就横向滚，但别显示滚动条 */
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* 吸顶时下面的卡片会从背后穿过去，得有不透明底 */
+    background: var(--paper);
+    margin: 0 -20px;
+    padding: 0 20px;
+  }
+
+  .side nav::-webkit-scrollbar { display: none; }
+
+  .side nav a {
+    padding: 9px 12px;
+    white-space: nowrap;
+  }
+
+  /* 当前分区的指示条：左侧竖条 → 底部横条 */
+  .side nav a.nav-on::before {
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: -1px;
+    width: auto;
+    height: 2px;
+  }
+
+  /* 状态徽章排成一行，别在顶部占掉三行高度 */
+  .side-status {
+    flex-direction: row;
+    gap: 20px;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .status-row { gap: 8px; }
+
+  /* 块流里 main 不再是 grid 的第二列，得自己和上面的状态行拉开 */
+  main { margin-top: 28px; }
+
+  /* 吸顶导航会盖住滚过去的标题，锚点跳转要多留出它的高度 */
+  main section { scroll-margin-top: 60px; }
+}
+
+/* ── 数据与维护：卡片里的子块 ──────────────────── */
+
+/*
+ * 这个分区里有三件不相干的事（队列、缓存、备份），共用一张卡片就得靠
+ * 分隔线自己划分边界，否则会糊成一长条。
+ */
+.block + .block {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--hairline);
+}
+
+.block-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.block-head strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.block-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+/* 句中强调，比 .warn 轻——它只是一句提醒，不是错误 */
+.warn-inline {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.empty {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+
+/* 子块里的结果文字：.ok / .err 的 margin 被重置成 0 了，这里补回上边距 */
+.block .ok,
+.block .err {
+  margin-top: 12px;
+}
+
+.queue-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.queue-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  background: var(--sunken);
+}
+
+.queue-list li + li { border-top: 1px solid var(--hairline); }
+
+/* 词和释义挤在一行，长释义省略掉——这里只是让用户认出"是哪个词" */
+.queue-item {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+}
+
+.queue-word {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.queue-def {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-time {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* 行内的删除按钮不需要按钮的完整体量 */
+.queue-list .btn-icon {
+  padding: 4px 6px;
+  flex-shrink: 0;
+}
+
+/* ── 键盘可达性 ────────────────────────────────── */
+
+/*
+ * 输入框自己有 :focus 的青色描边，但按钮、开关、分段控件、配置标签
+ * 全是 <button>，之前一个焦点样式都没有——Tab 走过去毫无反馈。
+ * 统一补一个，只在键盘操作时出现。
+ */
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* 输入框已经用描边+光晕表达了焦点，再叠一圈 outline 就脏了 */
+input:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* ── 动效降级 ──────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  main section,
+  .combo-list,
+  .reply,
+  .sample {
+    animation: none;
+  }
+
+  .spin { animation: none; }
+  .btn:active { transform: none; }
+  .switch-knob { transition: none; }
 }

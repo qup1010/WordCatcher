@@ -8,6 +8,8 @@
  * 两者都只能在 background 里调用（依赖扩展的 host_permissions 绕过 CORS）。
  */
 
+import { TIMEOUT, isTimeout, timeout } from './net'
+
 export type MtProvider = 'microsoft' | 'google'
 
 export const MT_PROVIDER_LABELS: Record<MtProvider, string> = {
@@ -32,6 +34,13 @@ export class MtError extends Error {
   }
 }
 
+/** 统一把 fetch 的失败翻成一句人话，超时和连不上要分开说 */
+function netError(who: string, err: unknown): MtError {
+  return new MtError(isTimeout(err)
+    ? `${who}超过 ${TIMEOUT.mt / 1000} 秒没有响应。`
+    : `连不上${who}。`)
+}
+
 // ── 谷歌 ────────────────────────────────────────
 
 export async function googleTranslate(text: string, targetLang: string): Promise<string> {
@@ -43,7 +52,14 @@ export async function googleTranslate(text: string, targetLang: string): Promise
     q: text,
   })
 
-  const res = await fetch(`https://translate.googleapis.com/translate_a/single?${params}`)
+  let res: Response
+  try {
+    res = await fetch(`https://translate.googleapis.com/translate_a/single?${params}`, {
+      signal: timeout(TIMEOUT.mt),
+    })
+  } catch (err) {
+    throw netError('谷歌翻译', err)
+  }
   if (!res.ok) throw new MtError(`谷歌翻译返回 HTTP ${res.status}`)
 
   // 响应是嵌套数组：[[["译文","原文",...], ...], ...]
@@ -92,7 +108,14 @@ async function getMicrosoftToken(): Promise<string> {
 
   if (!msTokenInflight) {
     msTokenInflight = (async () => {
-      const res = await fetch('https://edge.microsoft.com/translate/auth')
+      let res: Response
+      try {
+        res = await fetch('https://edge.microsoft.com/translate/auth', {
+          signal: timeout(TIMEOUT.mt),
+        })
+      } catch (err) {
+        throw netError('微软翻译鉴权服务', err)
+      }
       if (!res.ok) throw new MtError(`微软翻译鉴权失败：HTTP ${res.status}`)
       const value = await res.text()
       msToken = { value, expiresAt: jwtExpiry(value) }
@@ -114,17 +137,23 @@ export async function microsoftTranslate(text: string, targetLang: string): Prom
   const token = await getMicrosoftToken()
 
   // 不传 from 即自动检测源语言
-  const res = await fetch(
-    `https://api-edge.cognitive.microsofttranslator.com/translate?to=${targetLang}&api-version=3.0`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+  let res: Response
+  try {
+    res = await fetch(
+      `https://api-edge.cognitive.microsofttranslator.com/translate?to=${targetLang}&api-version=3.0`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify([{ Text: text }]),
+        signal: timeout(TIMEOUT.mt),
       },
-      body: JSON.stringify([{ Text: text }]),
-    },
-  )
+    )
+  } catch (err) {
+    throw netError('微软翻译', err)
+  }
 
   if (res.status === 401) {
     // token 提前失效的兜底：清缓存，让下一次请求重新鉴权

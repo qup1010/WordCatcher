@@ -2,6 +2,9 @@
   width: 268px;
   padding: 18px 18px 16px;
   text-align: left;
+  /* 自己画底色，不靠 :root 兜着——组件不该依赖页面根元素的背景 */
+  background: var(--card);
+  color: var(--ink);
 }
 
 .pop-brand {
@@ -47,6 +50,11 @@
   gap: 9px;
 }
 
+.check-body {
+  min-width: 0;
+  flex: 1;
+}
+
 .checks strong {
   font-size: 13px;
   font-weight: 600;
@@ -58,6 +66,114 @@
   color: var(--ink-soft);
   word-break: break-all;
 }
+
+/* ── 可切换的配置标签 ────────────────────────── */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.chip {
+  padding: 2px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 11.5px;
+  line-height: 1.55;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.chip:hover { border-color: var(--ink-faint); color: var(--ink); }
+/* 和设置页的 .profile-on 同一套观感：实心青底 + 反白字 */
+.chip-on {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: var(--on-teal);
+  font-weight: 600;
+}
+
+.chip-on:hover { border-color: var(--teal); color: var(--on-teal); }
+
+.pop-err {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+/* ── 待写队列 ──────────────────────────────────── */
+
+.queue {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--teal-wash);
+}
+
+.queue-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--teal);
+}
+
+.queue p {
+  margin: 5px 0 9px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.queue-note {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+/* 补写按钮不该比「打开设置」还抢眼 */
+.btn-quiet {
+  padding: 6px;
+  border: 1px solid var(--teal);
+  background: transparent;
+  color: var(--teal);
+  font-size: 12px;
+}
+
+.btn-quiet:hover:not(:disabled) { background: var(--teal-wash); }
+
+.btn-quiet:disabled {
+  border-color: var(--hairline);
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+/* ── 键盘可达性 ────────────────────────────────── */
+
+.pop :focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip, .btn { transition: none; }
+}
+
+/* 首帧还没读到配置，先占住高度，避免 popup 窗口跳一下 */
+.pop-blank { height: 232px; }
 
 .dot {
   width: 7px;
@@ -83,9 +199,9 @@
   width: 100%;
   padding: 8px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: var(--teal);
-  color: #fff;
+  color: var(--on-teal);
   font-size: 13px;
   font-weight: 550;
   font-family: inherit;
@@ -94,7 +210,3 @@
 }
 
 .btn:hover { background: var(--teal-deep); }
-
-@media (prefers-color-scheme: dark) {
-  .btn { color: #10201c; }
-}

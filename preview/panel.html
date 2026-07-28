@@ -1,0 +1,235 @@
+<!doctype html>
+<!--
+  划词面板的全部状态。
+
+  真实的面板跑在 Shadow DOM 里、由内容脚本注入，没法直接在浏览器里打开，
+  所以这里用相同的类名复刻一份静态结构。改了 content/App.tsx 的结构记得同步过来——
+  `pnpm preview` 启动时会检查固件用的类名在样式表里还存不存在，但它查不出布局层面的漂移。
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>划词面板 · 样式预览</title>
+<link rel="stylesheet" href="/css/content.css">
+<link rel="stylesheet" href="/css/preview.css">
+</head>
+<body>
+
+<div class="case">
+  <b>触发胶囊</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-pill">
+      <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg><span>快译</span></button>
+      <div class="wc-pill-sep"></div>
+      <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z"/></svg><span>AI 详解</span></button>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>快译 · 结果（含自动切换）</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel wc-panel-quick">
+      <div class="wc-fade">
+        <div class="wc-head">
+          <span class="wc-word wc-word-sm">devastated</span>
+          <button class="wc-speak"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4V5z"/></svg></button>
+          <div class="wc-spacer"></div>
+          <span class="wc-tag wc-tag-alt">微软翻译</span>
+        </div>
+        <div class="wc-def">毁灭；使极度震惊</div>
+        <div class="wc-actions wc-actions-tight">
+          <button class="wc-btn wc-btn-ghost wc-btn-accent">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z"/></svg><span>AI 详解</span>
+          </button>
+          <button class="wc-btn wc-btn-ghost">存入 Anki</button>
+          <div class="wc-spacer"></div>
+          <button class="wc-btn wc-btn-ghost">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <!-- 长短语：验证挤不下时先牺牲标签、而不是把词从字母中间断开 -->
+  <b>快译 · 长短语</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel wc-panel-quick">
+      <div class="wc-fade">
+        <div class="wc-head">
+          <span class="wc-word wc-word-sm">a blessing in disguise</span>
+          <div class="wc-spacer"></div>
+          <span class="wc-tag">谷歌翻译</span>
+        </div>
+        <div class="wc-def">因祸得福；塞翁失马</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>快译 · 加载中</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel wc-panel-quick">
+      <div class="wc-fade">
+        <div class="wc-head">
+          <span class="wc-word wc-word-sm">devastated</span>
+          <div class="wc-spacer"></div>
+        </div>
+        <div class="wc-state"><span class="wc-dots"><i></i><i></i><i></i></span><span>翻译中</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>AI 词条 · 结果</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel">
+      <div class="wc-fade">
+        <div class="wc-head">
+          <span class="wc-word">devastate</span>
+          <span class="wc-reading">/ˈdevəsteɪt/</span>
+          <button class="wc-speak"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4V5z"/></svg></button>
+          <span class="wc-pos">v.</span>
+        </div>
+        <div class="wc-def">使（某人）极度震惊、悲痛</div>
+        <div class="wc-context">
+          <div>He was <mark>devastated</mark> by the news.</div>
+          <div class="wc-context-trans">这个消息让他极度震惊。</div>
+        </div>
+        <div class="wc-actions">
+          <button class="wc-btn wc-btn-primary">存入 Anki</button>
+          <div class="wc-spacer"></div>
+          <button class="wc-btn wc-btn-ghost">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>AI 词条 · 已在牌组</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel">
+      <div class="wc-fade">
+        <div class="wc-head">
+          <span class="wc-word">devastate</span>
+          <span class="wc-reading">/ˈdevəsteɪt/</span>
+          <span class="wc-pos">v.</span>
+        </div>
+        <div class="wc-def">使（某人）极度震惊、悲痛</div>
+        <div class="wc-actions">
+          <button class="wc-btn wc-btn-primary" disabled>已在牌组</button>
+          <span class="wc-note">读过就好，不用重复收藏</span>
+          <div class="wc-spacer"></div>
+          <button class="wc-btn wc-btn-ghost">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>AI 词条 · 已排队</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel">
+      <div class="wc-fade">
+        <div class="wc-head">
+          <span class="wc-word">devastate</span>
+          <span class="wc-pos">v.</span>
+        </div>
+        <div class="wc-def">使（某人）极度震惊、悲痛</div>
+        <div class="wc-actions">
+          <button class="wc-btn wc-btn-primary" disabled>已排队</button>
+          <span class="wc-note wc-note-ok">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m20 6-11 11-5-5"/></svg>
+            <span>Anki 没开，已排队（3）</span>
+          </span>
+          <div class="wc-spacer"></div>
+          <button class="wc-btn wc-btn-ghost">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>AI 词条 · 流式生成中</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel">
+      <div class="wc-fade">
+        <div class="wc-head">
+          <span class="wc-word">devastate</span>
+          <span class="wc-reading">/ˈdevəsteɪt/</span>
+          <span class="wc-pos">v.</span>
+        </div>
+        <div class="wc-def">使（某人）极度震<span class="wc-caret"></span></div>
+        <div class="wc-context"><div>He was <mark>devastated</mark> by the news.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>AI 词条 · 骨架屏</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel">
+      <div class="wc-fade">
+        <div class="wc-sk">
+          <div class="wc-sk-bar wc-sk-word"></div>
+          <div class="wc-sk-bar wc-sk-def"></div>
+          <div class="wc-sk-bar wc-sk-def-2"></div>
+          <div class="wc-sk-quote">
+            <div class="wc-sk-bar"></div>
+            <div class="wc-sk-bar wc-sk-short"></div>
+          </div>
+        </div>
+        <div class="wc-state wc-state-quiet">
+          <span class="wc-dots"><i></i><i></i><i></i></span>
+          <span>正在结合上下文解释「devastated」</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>AI 词条 · 错误</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel">
+      <div class="wc-fade">
+        <div class="wc-error">API key 无效或已过期，请到设置页检查。</div>
+        <div class="wc-actions">
+          <button class="wc-btn wc-btn-primary">重试</button>
+          <button class="wc-btn wc-btn-ghost">打开设置</button>
+          <div class="wc-spacer"></div>
+          <button class="wc-btn wc-btn-ghost">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <b>存卡失败</b>
+  <div class="wc-root wc-layer">
+    <div class="wc-panel">
+      <div class="wc-fade">
+        <div class="wc-def">使（某人）极度震惊、悲痛</div>
+        <div class="wc-actions">
+          <button class="wc-btn wc-btn-primary">存入 Anki</button>
+          <div class="wc-spacer"></div>
+          <button class="wc-btn wc-btn-ghost">关闭</button>
+        </div>
+        <div class="wc-error" style="margin-top:8px">
+          连不上 Anki。请确认 Anki 桌面版正在运行。 <button class="wc-link">去设置</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

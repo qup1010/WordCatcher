@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Word Catcher · 样式预览</title>
+<link rel="stylesheet" href="/css/preview.css">
+<style>
+  body { display: block; max-width: 640px; margin: 0 auto; color: #fff; }
+  h1 { font-family: Georgia, serif; font-size: 26px; margin: 0 0 6px; }
+  p { color: rgb(255 255 255 / 0.8); line-height: 1.75; font-size: 14px; }
+  ul { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 10px; }
+  a {
+    display: block;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: rgb(255 255 255 / 0.12);
+    color: #fff;
+    text-decoration: none;
+    font-size: 15px;
+    transition: background 0.12s ease;
+  }
+  a:hover { background: rgb(255 255 255 / 0.2); }
+  a span { display: block; font-size: 12.5px; color: rgb(255 255 255 / 0.65); margin-top: 2px; }
+  code { background: rgb(0 0 0 / 0.25); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<h1>样式预览</h1>
+<p>
+  用的是 <code>.output/chrome-mv3</code> 里的构建产物 CSS，所以改完样式要重新
+  <code>pnpm build</code>。系统切换深色模式即可看深色效果。
+</p>
+
+<ul>
+  <li>
+    <a href="/panel.html">划词面板
+      <span>触发胶囊 / 快译 / AI 词条 / 骨架屏 / 流式 / 各种错误态</span>
+    </a>
+  </li>
+  <li>
+    <a href="/options.html">设置页
+      <span>四个分区、词条卡预览、两种测试结果。窄屏效果把窗口拖到 860px 以下</span>
+    </a>
+  </li>
+  <li>
+    <a href="/popup.html">popup
+      <span>单套/多套配置、未配置、待写队列、补写结果</span>
+    </a>
+  </li>
+</ul>
+
+</body>
+</html>

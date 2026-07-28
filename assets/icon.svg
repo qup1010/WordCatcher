@@ -1,0 +1,27 @@
+<!--
+  Word Catcher 图标 —— 「被划选的词」
+
+  一个衬线小写 a（词典里的第一个词条）压着一道琥珀色划线，
+  正好是产品做的那件事：在页面上划中一个词。
+
+  配色刻意反过来用：底色走墨青而不是暖纸。
+  暖纸 #fdfcf9 和 Chrome 浅色工具栏的底色几乎一样，图标会整个"化"进去；
+  墨青足够深、又是品牌色，浅色深色工具栏上都立得住。
+
+  这是 48px 以上用的完整版，16/32 用 icon-small.svg（笔画更粗、留白更少）。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="28" fill="#0e6f63" />
+
+  <!-- 词条本身 -->
+  <text
+    x="64" y="86"
+    font-family="Georgia, 'Iowan Old Style', 'Times New Roman', serif"
+    font-size="82"
+    fill="#fdfcf9"
+    text-anchor="middle"
+  >a</text>
+
+  <!-- 划线：亮琥珀而不是 #b45309，深琥珀压在墨青上对比度不够 -->
+  <rect x="34" y="97" width="60" height="8" rx="4" fill="#e8a94e" />
+</svg>

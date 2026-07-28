@@ -12,6 +12,9 @@ export const storage = {
   async setItem(key: string, value: unknown): Promise<void> {
     store[key] = value
   },
+  async removeItem(key: string): Promise<void> {
+    delete store[key]
+  },
   watch() {
     return () => {}
   },
@@ -26,7 +29,16 @@ export const browser = {
   runtime: {
     async sendMessage() { return { ok: false, error: 'stub' } },
     openOptionsPage() {},
+    connect() {
+      return {
+        onMessage: { addListener() {} },
+        onDisconnect: { addListener() {} },
+        postMessage() {},
+        disconnect() {},
+      }
+    },
     onMessage: { addListener() {} },
+    onConnect: { addListener() {} },
     onInstalled: { addListener() {} },
   },
 }

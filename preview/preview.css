@@ -1,0 +1,71 @@
+/*
+ * 预览页自己的外壳样式，不属于扩展。
+ *
+ * 刻意用中性灰底：三个界面的底色都是暖纸系，预览页再用暖色就分不清
+ * "哪块是组件、哪块是背景"了。
+ */
+
+body {
+  margin: 0;
+  padding: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 28px;
+  background: #8b8b8b;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  body { background: #4a4845; }
+}
+
+.case {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.case > b {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+}
+
+/*
+ * 划词面板真实运行时是 position: fixed 的浮层，这里要让它回到文档流里
+ * 才能一屏摆下所有状态。宽度仍由组件自己决定，不覆盖。
+ */
+.case .wc-layer {
+  position: static;
+}
+
+/* 入场动画会让截图拍到中间帧，预览里一律关掉 */
+.wc-pill,
+.wc-panel,
+.wc-fade,
+main section,
+.reply,
+.sample,
+.combo-list {
+  animation: none !important;
+}
+
+/* 整页型固件（设置页）自己占满一行 */
+.page {
+  flex: 1 1 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.25);
+}
+
+/* popup 有固定宽度，模拟浏览器弹窗的样子 */
+.popup-frame {
+  width: 268px;
+  background: var(--card);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.25);
+}

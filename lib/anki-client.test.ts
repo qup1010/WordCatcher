@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AnkiError, addNote, checkConnection, ensureDeckAndModel, updateModelTemplates } from './anki'
+import {
+  AnkiError,
+  addNote,
+  checkConnection,
+  ensureDeckAndModel,
+  escapeQuery,
+  findExisting,
+  updateModelTemplates,
+} from './anki'
 import { DEFAULT_SETTINGS, type CapturedCard, type Settings } from './types'
 
 interface Call { action: string, params: Record<string, any> }
@@ -57,6 +65,30 @@ describe('checkConnection', () => {
     expect(err).toBeInstanceOf(AnkiError)
     expect(err.kind).toBe('unreachable')
     expect(err.message).toContain('Anki')
+  })
+
+  it('Anki 卡住不响应时报超时，而不是说「没在运行」', async () => {
+    // 最典型的场景：Anki 开着，但弹了个同步冲突对话框把主线程堵死，
+    // 这时候提示「请确认 Anki 正在运行」会让人一头雾水
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new DOMException('signal timed out', 'TimeoutError')
+    }))
+
+    const err = await checkConnection(settings.anki.url).catch(e => e)
+    expect(err).toBeInstanceOf(AnkiError)
+    expect(err.kind).toBe('unreachable')
+    expect(err.message).toContain('没有响应')
+    expect(err.message).not.toContain('正在运行')
+  })
+
+  it('每个请求都带上超时 signal', async () => {
+    // 漏传 signal 的话对端吊着不返回时 Promise 永远不 settle，UI 会一直卡在「保存中」
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      new Response(JSON.stringify({ result: 6, error: null }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await checkConnection(settings.anki.url)
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
   })
 
   it('HTTP 非 200 时抛 api 错误', async () => {
@@ -183,5 +215,36 @@ describe('addNote', () => {
 
     const err = await addNote(sampleCard, settings).catch(e => e)
     expect(err.message).toBe('model was not found')
+  })
+})
+
+describe('findExisting', () => {
+  it('按牌组 + 笔记类型 + 首字段查重，口径和 addNote 的去重一致', async () => {
+    const calls = mockAnki(() => [1748392847362])
+
+    await expect(findExisting('devastate', settings)).resolves.toEqual([1748392847362])
+
+    const { query } = calls[0].params
+    expect(calls[0].action).toBe('findNotes')
+    expect(query).toContain(`"deck:${settings.anki.deckName}"`)
+    expect(query).toContain(`"note:${settings.anki.noteTypeName}"`)
+    expect(query).toContain('"Word:devastate"')
+  })
+
+  /**
+   * Anki 搜索里 * 和 _ 是通配符。不转义的话划到「*」这种词会把整个牌组
+   * 匹配出来，界面上显示成"已收藏"，用户就永远存不进去了。
+   */
+  it('转义通配符和引号，避免误报成已收藏', () => {
+    expect(escapeQuery('a*b')).toBe(String.raw`a\*b`)
+    expect(escapeQuery('a_b')).toBe(String.raw`a\_b`)
+    expect(escapeQuery('say "hi"')).toBe(String.raw`say \"hi\"`)
+    expect(escapeQuery(String.raw`C:\path`)).toBe(String.raw`C\:\\path`)
+  })
+
+  it('空词不发请求', async () => {
+    const calls = mockAnki(() => [])
+    await expect(findExisting('   ', settings)).resolves.toEqual([])
+    expect(calls).toHaveLength(0)
   })
 })
