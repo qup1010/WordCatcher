@@ -22,7 +22,7 @@ export function MtSection({ s, onChange }: SectionProps) {
           onChange={provider => onChange({ ...s, mt: { ...s.mt, provider } })}
         />
       </div>
-      <p className="hint">谷歌翻译在部分网络环境下无法连接。</p>
+      <p className="hint">谷歌可额外给出词性与多义项；在部分网络环境下可能连不上，失败时会自动切到另一家。</p>
     </Section>
   )
 }

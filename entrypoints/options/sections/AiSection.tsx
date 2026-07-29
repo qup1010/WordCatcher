@@ -6,7 +6,12 @@ import type { AiProfile, WordEntry } from '@/lib/types'
 import { Combobox } from '../components/Combobox'
 import { SamplePreview } from '../components/SamplePreview'
 import { Section } from '../components/Section'
-import { EXPLAIN_LANGUAGES, PROVIDER_PRESETS } from '../presets'
+import {
+  EXPLAIN_LANGUAGES,
+  matchProviderPreset,
+  PROVIDER_PRESETS,
+  type ProviderPreset,
+} from '../presets'
 import type { SectionProps, Status } from './types'
 
 /** 测试结果：要么给出一张真实的词条卡，要么说清楚卡在哪一环 */
@@ -25,6 +30,8 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
   const [modelOpen, setModelOpen] = useState(false)
 
   const active = activeAiProfile(s)
+  /** 按当前 Base URL 反推：匹配到预设就高亮它，否则高亮「自定义」 */
+  const matchedPreset = matchProviderPreset(active.baseURL)
 
   /** 换了配置之后，上一套的模型列表和测试结果都不再作数 */
   const resetFeedback = () => {
@@ -42,6 +49,20 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
         profiles: s.ai.profiles.map(p => (p.id === s.ai.activeId ? { ...p, ...part } : p)),
       },
     })
+
+  /** 点预设：只写 baseURL，不动 model / apiKey / 名称 */
+  const applyProviderPreset = (preset: ProviderPreset | null) => {
+    if (preset) {
+      if (matchedPreset?.baseURL === preset.baseURL) return
+      patchProfile({ baseURL: preset.baseURL })
+    } else {
+      // 自定义：若当前是某预设地址，清空让用户自己填；已是自定义则不动
+      if (!matchedPreset) return
+      patchProfile({ baseURL: '' })
+    }
+    setModels([])
+    setModelsStatus({ kind: 'idle' })
+  }
 
   const switchProfile = (id: string) => {
     resetFeedback()
@@ -143,28 +164,47 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
         )}
       </label>
 
-      <label className="field">
-        <span>服务商预设</span>
-        <select
-          value=""
-          onChange={(e) => {
-            const p = PROVIDER_PRESETS.find(x => x.label === e.target.value)
-            if (!p) return
-            patchProfile({ baseURL: p.baseURL, model: p.model })
-            setModels([])
-            setModelsStatus({ kind: 'idle' })
-          }}
-        >
-          <option value="">选择后自动填入地址和模型…</option>
-          {PROVIDER_PRESETS.map(p => <option key={p.label} value={p.label}>{p.label}</option>)}
-        </select>
-      </label>
+      <div className="field field-top">
+        <span>服务商</span>
+        <div className="provider-chips" role="radiogroup" aria-label="服务商预设">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!matchedPreset}
+            className={`provider-chip ${!matchedPreset ? 'provider-on' : ''}`}
+            title="自己填写接口地址"
+            onClick={() => applyProviderPreset(null)}
+          >
+            自定义
+          </button>
+          {PROVIDER_PRESETS.map(p => {
+            const on = matchedPreset?.baseURL === p.baseURL
+            return (
+              <button
+                key={p.label}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                className={`provider-chip ${on ? 'provider-on' : ''}`}
+                title={p.title ?? p.label}
+                onClick={() => applyProviderPreset(p)}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <p className="hint">
+        点预设只填入接口地址，模型请自行填写或拉取列表。
+        {matchedPreset?.hint ? ` ${matchedPreset.hint}` : ''}
+      </p>
 
       <label className="field">
         <span>Base URL</span>
         <input
           value={active.baseURL}
-          placeholder="https://api.openai.com/v1"
+          placeholder="https://api.example.com/v1"
           onChange={e => patchProfile({ baseURL: e.target.value })}
         />
       </label>

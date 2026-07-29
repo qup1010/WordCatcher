@@ -2,7 +2,7 @@ import { Check, Sparkles, Volume2, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PartialEntry } from '@/lib/ai'
 import { resolveOffset } from '@/lib/anki'
-import type { MtProvider } from '@/lib/machine-translate'
+import type { GoogleDictEntry, MtProvider } from '@/lib/machine-translate'
 import { MT_PROVIDER_LABELS } from '@/lib/machine-translate'
 import { openEntryStream, sendMessage } from '@/lib/messaging'
 import { place } from '@/lib/placement'
@@ -98,7 +98,14 @@ type Phase =
   | { kind: 'hidden' }
   | { kind: 'trigger' }
   | { kind: 'quick-loading' }
-  | { kind: 'quick', translation: string, provider: MtProvider, fellBack: boolean }
+  | {
+    kind: 'quick'
+    translation: string
+    provider: MtProvider
+    fellBack: boolean
+    /** 谷歌词典：词性 + 多义项；微软路径没有 */
+    dictionary?: GoogleDictEntry[]
+  }
   | { kind: 'quick-error', message: string }
   | { kind: 'loading' }
   /** 流式生成中：字段陆续到齐，先渲染已有的部分 */
@@ -281,7 +288,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     }
   }, [phase.kind, anchor?.range])
 
-  // 出结果就顺手查一次重，让「存入 Anki」在用户读完释义之前就变成「已收藏」
+  // 出结果就顺手查一次重，让「存入单词本」在用户读完释义之前就变成「已收藏」
   const dupeWord = phase.kind === 'result'
     ? phase.entry.word
     : phase.kind === 'quick' && anchor
@@ -354,11 +361,19 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   /** 快译结果直接存卡：没有 AI 的词形还原和语境释义，用机器翻译当释义 */
   const onSaveQuick = useCallback(async () => {
     if (phase.kind !== 'quick' || !anchor) return
+    const dict = phase.dictionary
+    // 有词典时：首个词性 + 各义项拼成释义，比单句译文更适合进单词本
+    const pos = dict?.[0]?.pos ?? ''
+    const definition = dict && dict.length > 0
+      ? dict
+        .map(d => (d.pos ? `${d.pos} ${d.meanings.join('；')}` : d.meanings.join('；')))
+        .join(' / ')
+      : phase.translation
     await saveCard({
       word: anchor.ctx.selection,
       reading: '',
-      partOfSpeech: '',
-      definition: phase.translation,
+      partOfSpeech: pos,
+      definition,
       contextTranslation: '',
     })
   }, [phase, anchor, saveCard])
@@ -382,7 +397,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         ? '已排队'
         : dupe === 'yes'
           ? '已在牌组'
-          : '存入 Anki'
+          : '存入单词本'
 
   // ── 触发胶囊：⚡ 快译 | ✨ AI 词条 ────────────────
   if (phase.kind === 'trigger') {
@@ -454,7 +469,21 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             )}
 
             {phase.kind === 'quick' && (
-              <div className="wc-def">{phase.translation}</div>
+              <div className="wc-quick-body">
+                <div className="wc-def">{phase.translation}</div>
+                {phase.dictionary && phase.dictionary.length > 0 && (
+                  <div className="wc-dict">
+                    {phase.dictionary.map(entry => (
+                      <div className="wc-dict-row" key={entry.pos}>
+                        <span className="wc-dict-pos">{entry.pos}</span>
+                        <span className="wc-dict-meanings">
+                          {entry.meanings.join('；')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {phase.kind === 'quick-error' && (

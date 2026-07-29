@@ -369,6 +369,53 @@ code {
   line-height: 0;
 }
 
+/* 服务商预设：可换行的 chip 行，和配置 chip 同族但更轻 */
+.field-top {
+  align-items: flex-start;
+}
+
+.field-top > span:first-child {
+  padding-top: 6px;
+}
+
+.provider-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-chip {
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  color: var(--ink-soft);
+  border-radius: var(--r-pill);
+  padding: 4px 11px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 0.13s ease, color 0.13s ease, background 0.13s ease;
+}
+
+.provider-chip:hover {
+  border-color: var(--ink-faint);
+  color: var(--ink);
+}
+
+.provider-on {
+  background: var(--teal-wash);
+  border-color: var(--teal);
+  color: var(--teal);
+  font-weight: 550;
+}
+
+.provider-on:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
 .btn-danger:hover:not(:disabled) {
   border-color: var(--danger);
   color: var(--danger);

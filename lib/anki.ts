@@ -123,15 +123,22 @@ export function resolveOffset(sentence: string, selection: string, hint: number)
   return sentence.toLowerCase().indexOf(needle.toLowerCase())
 }
 
+/** 四种复习模式，顺序即卡片模板 ord（0..3），分流到子牌组时按此映射 */
+export const ANKI_MODES = ['Context', 'Recognition', 'Production', 'Listening'] as const
+export type AnkiMode = (typeof ANKI_MODES)[number]
+
+export function modeDeckName(deckName: string, mode: AnkiMode): string {
+  return `${deckName}::${mode}`
+}
+
 function cardTemplates(ttsLang: string) {
   return [
     {
-      Name: 'Recall',
+      Name: 'Context' as const,
       Front: `
 <div class="wc-sentence">{{Sentence}}</div>
 {{#PartOfSpeech}}<div class="wc-pos">{{PartOfSpeech}}</div>{{/PartOfSpeech}}
 `.trim(),
-      // {{tts}} 只放背面：放正面会在你回忆出来之前就把答案念出来
       Back: `
 {{FrontSide}}
 <hr id=answer>
@@ -143,74 +150,192 @@ function cardTemplates(ttsLang: string) {
 {{#Source}}<div class="wc-source">{{Source}}</div>{{/Source}}
 `.trim(),
     },
+    {
+      Name: 'Recognition' as const,
+      Front: `
+<div class="wc-word">{{Word}}</div>
+`.trim(),
+      Back: `
+{{FrontSide}}
+<hr id=answer>
+<div class="wc-def">{{Definition}}</div>
+<div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
+`.trim(),
+    },
+    {
+      Name: 'Production' as const,
+      Front: `
+<div class="wc-def">{{Definition}}</div>
+`.trim(),
+      Back: `
+{{FrontSide}}
+<hr id=answer>
+<div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">/{{Reading}}/</span>{{/Reading}}</div>
+<div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
+`.trim(),
+    },
+    {
+      Name: 'Listening' as const,
+      Front: `
+<div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
+<div class="wc-listen-hint">听音</div>
+`.trim(),
+      Back: `
+{{FrontSide}}
+<hr id=answer>
+<div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">/{{Reading}}/</span>{{/Reading}}</div>
+<div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
+<div class="wc-def">{{Definition}}</div>
+`.trim(),
+    },
   ]
 }
 
 const MODEL_CSS = `
 .card {
   font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-  font-size: 20px;
+  font-size: 21px;
   text-align: left;
   color: #221f1a;
   background: #fdfcf9;
-  padding: 22px 24px;
-  line-height: 1.75;
+  padding: 28px 32px;
+  line-height: 1.8;
+  max-width: 420px;
 }
-.wc-sentence { font-size: 22px; }
+
+.wc-sentence {
+  font-size: 24px;
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+
 .wc-blank {
   color: #b45309;
   font-weight: 700;
   border-bottom: 2px solid #b45309;
-  padding: 0 2px;
+  padding: 0 3px;
 }
+
 .wc-pos {
-  margin-top: 10px;
+  margin-top: 12px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 15px;
+  font-size: 16px;
   color: #0e6f63;
   font-style: italic;
 }
+
 .wc-word {
-  margin-top: 6px;
+  margin-top: 8px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 32px;
+  font-size: 36px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: #221f1a;
+  line-height: 1.1;
 }
+
 .wc-reading {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 400;
   color: #a39c8f;
+  margin-left: 4px;
 }
-.wc-def { margin-top: 10px; font-size: 19px; }
+
+.wc-listen-hint {
+  margin-top: 14px;
+  font-size: 16px;
+  color: #a39c8f;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+
+.wc-def {
+  margin-top: 14px;
+  font-size: 20px;
+  color: #3f3f3f;
+}
+
 .wc-full {
-  margin-top: 16px;
-  padding-left: 13px;
-  border-left: 2px solid #e8e3d9;
+  margin-top: 18px;
+  padding-left: 14px;
+  border-left: 3px solid #e8e3d9;
   color: #6d675d;
   font-size: 17px;
 }
-.wc-trans { padding-left: 13px; color: #a39c8f; font-size: 15px; }
-.wc-source { margin-top: 16px; font-size: 13px; color: #a39c8f; }
-.wc-source a { color: #a39c8f; }
-hr#answer { border: none; border-top: 1px solid #e8e3d9; margin: 18px 0 4px; }
-.nightMode .card, .night_mode .card { color: #ece7dd; background: #23211d; }
-.nightMode .wc-word, .night_mode .wc-word { color: #ece7dd; }
-.nightMode .wc-pos, .night_mode .wc-pos { color: #4fd1bb; }
-.nightMode .wc-blank, .night_mode .wc-blank { color: #e8a94e; border-bottom-color: #e8a94e; }
-.nightMode .wc-full, .night_mode .wc-full { color: #a89f90; border-left-color: #3a362e; }
-.nightMode hr#answer, .night_mode hr#answer { border-top-color: #3a362e; }
+
+.wc-trans {
+  margin-top: 12px;
+  font-size: 15px;
+  color: #a39c8f;
+}
+
+.wc-source {
+  margin-top: 16px;
+  font-size: 13px;
+  color: #a39c8f;
+}
+
+.wc-source a {
+  color: #a39c8f;
+  text-decoration: none;
+}
+
+hr#answer {
+  border: none;
+  border-top: 1px solid #e8e3d9;
+  margin: 22px 0 8px;
+}
+
+.nightMode .card,
+.night_mode .card {
+  color: #ece7dd;
+  background: #23211d;
+}
+
+.nightMode .wc-word,
+.night_mode .wc-word {
+  color: #ece7dd;
+}
+
+.nightMode .wc-pos,
+.night_mode .wc-pos {
+  color: #4fd1bb;
+}
+
+.nightMode .wc-blank,
+.night_mode .wc-blank {
+  color: #e8a94e;
+  border-bottom-color: #e8a94e;
+}
+
+.nightMode .wc-full,
+.night_mode .wc-full {
+  color: #a89f90;
+  border-left-color: #3a362e;
+}
+
+.nightMode .wc-listen-hint,
+.night_mode .wc-listen-hint {
+  color: #a89f90;
+}
+
+.nightMode hr#answer,
+.night_mode hr#answer {
+  border-top-color: #3a362e;
+}
 `.trim()
 
-/** 确保牌组和 Note Type 都存在，不存在就建。可重复调用。 */
+/** 确保牌组、子牌组和 Note Type 都存在；模型已存在时也会把模板刷到最新。 */
 export async function ensureDeckAndModel(s: Settings): Promise<void> {
   const { url, deckName, noteTypeName, ttsLang } = s.anki
 
   const decks = await invoke<string[]>(url, 'deckNames')
-  if (!decks.includes(deckName)) {
-    await invoke(url, 'createDeck', { deck: deckName })
+  const wantedDecks = [deckName, ...ANKI_MODES.map(mode => modeDeckName(deckName, mode))]
+  for (const name of wantedDecks) {
+    if (!decks.includes(name)) {
+      await invoke(url, 'createDeck', { deck: name })
+    }
   }
 
   const models = await invoke<string[]>(url, 'modelNames')
@@ -220,21 +345,60 @@ export async function ensureDeckAndModel(s: Settings): Promise<void> {
       inOrderFields: [...ANKI_FIELDS],
       css: MODEL_CSS,
       isCloze: false,
+      // AnkiConnect createModel 只认 Name/Front/Back，子牌组分流靠 addNote 后 changeDeck
       cardTemplates: cardTemplates(ttsLang),
     })
+  } else {
+    // 老模型（单模板 / 坏 Listening 正面）在这里修到最新四模式
+    await updateModelTemplates(s)
   }
 }
 
 /** 改了 ttsLang 或想升级样式时调用，把模板刷成最新的 */
 export async function updateModelTemplates(s: Settings): Promise<void> {
   const { url, noteTypeName, ttsLang } = s.anki
-  const [tpl] = cardTemplates(ttsLang)
+  const templates = cardTemplates(ttsLang)
+  // 一次请求刷完所有模板，避免多次往返 + 中途失败留下半新半旧
+  const templateMap: Record<string, { Front: string, Back: string }> = {}
+  for (const tpl of templates) {
+    templateMap[tpl.Name] = { Front: tpl.Front, Back: tpl.Back }
+  }
   await invoke(url, 'updateModelTemplates', {
-    model: { name: noteTypeName, templates: { [tpl.Name]: { Front: tpl.Front, Back: tpl.Back } } },
+    model: { name: noteTypeName, templates: templateMap },
   })
   await invoke(url, 'updateModelStyling', {
     model: { name: noteTypeName, css: MODEL_CSS },
   })
+}
+
+/**
+ * 把刚写入的笔记按模板 ord 拆到对应子牌组。
+ *
+ * 库存 AnkiConnect 的 createModel 不支持 deckOverride，只能 addNote 后 changeDeck。
+ * 失败不致命：卡仍在主牌组，用户还能按模板筛选复习。
+ */
+async function routeCardsToModeDecks(noteId: number, s: Settings): Promise<void> {
+  const { url, deckName } = s.anki
+  const cardIds = await invoke<number[]>(url, 'findCards', { query: `nid:${noteId}` })
+  if (cardIds.length === 0) return
+
+  const infos = await invoke<Array<{ cardId: number, ord: number }>>(url, 'cardsInfo', {
+    cards: cardIds,
+  })
+
+  const byDeck = new Map<string, number[]>()
+  for (const info of infos) {
+    const mode = ANKI_MODES[info.ord]
+    if (!mode) continue
+    const target = modeDeckName(deckName, mode)
+    const list = byDeck.get(target) ?? []
+    list.push(info.cardId)
+    byDeck.set(target, list)
+  }
+
+  for (const [deck, cards] of byDeck) {
+    await invoke(url, 'changeDeck', { cards, deck })
+  }
 }
 
 function escapeHtml(text: string): string {
@@ -266,7 +430,7 @@ export async function addNote(card: CapturedCard, s: Settings): Promise<number> 
   await ensureDeckAndModel(s)
 
   try {
-    return await invoke<number>(s.anki.url, 'addNote', {
+    const noteId = await invoke<number>(s.anki.url, 'addNote', {
       note: {
         deckName: s.anki.deckName,
         modelName: s.anki.noteTypeName,
@@ -279,6 +443,15 @@ export async function addNote(card: CapturedCard, s: Settings): Promise<number> 
         },
       },
     })
+
+    // 一笔记四模板：按模式挪到子牌组，复习时自己选子牌组即可
+    try {
+      await routeCardsToModeDecks(noteId, s)
+    } catch {
+      // 分流失败不影响已写入；卡留在主牌组仍可按模板复习
+    }
+
+    return noteId
   } catch (err) {
     if (err instanceof AnkiError && /duplicate/i.test(err.message)) {
       throw new AnkiError(`「${card.entry.word}」已经在牌组里了，不用重复添加。`, 'api')

@@ -4,6 +4,7 @@ import {
   MtError,
   googleTranslate,
   microsoftTranslate,
+  parseGooglePayload,
   quickTranslate,
 } from './machine-translate'
 
@@ -51,26 +52,82 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe('parseGooglePayload', () => {
+  it('抽出译文，并按词性整理词典义项', () => {
+    const raw = [
+      [['主张', 'assertion', null]],
+      [
+        ['名词', ['主张', '断言', '声明']],
+        ['动词', ['断言', '主张']],
+      ],
+      'en',
+    ]
+    expect(parseGooglePayload(raw)).toEqual({
+      translation: '主张',
+      dictionary: [
+        { pos: '名词', meanings: ['主张', '断言', '声明'] },
+        { pos: '动词', meanings: ['断言', '主张'] },
+      ],
+    })
+  })
+
+  it('没有词典段时只返回译文', () => {
+    expect(parseGooglePayload([[['hello', '你好', null]], null, 'en'])).toEqual({
+      translation: 'hello',
+    })
+  })
+
+  it('义项去重并截断过长列表', () => {
+    const many = Array.from({ length: 12 }, (_, i) => `义${i}`)
+    const out = parseGooglePayload([
+      [['x', 'y', null]],
+      [['名词', ['义0', '义0', ...many]]],
+    ])
+    expect(out.dictionary![0].meanings).toHaveLength(8)
+    expect(out.dictionary![0].meanings[0]).toBe('义0')
+  })
+})
+
 describe('googleTranslate', () => {
-  it('拼出 gtx 请求并拼接分段译文', async () => {
+  it('拼出 gtx 请求（含词典 dt）并返回译文', async () => {
     const log = mockRoutes({
       [GOOGLE]: () => json([[['极度震惊的', 'devastated', null]], null, 'en']),
     })
 
-    await expect(googleTranslate('devastated', 'zh-CN')).resolves.toBe('极度震惊的')
+    await expect(googleTranslate('devastated', 'zh-CN')).resolves.toEqual({
+      translation: '极度震惊的',
+    })
 
     const url = new URL(log[0].url)
     expect(url.searchParams.get('client')).toBe('gtx')
     expect(url.searchParams.get('sl')).toBe('auto')
     expect(url.searchParams.get('tl')).toBe('zh-CN')
     expect(url.searchParams.get('q')).toBe('devastated')
+    // 多个 dt 用 getAll；至少要有译文 + 词典
+    expect(url.searchParams.getAll('dt')).toEqual(expect.arrayContaining(['t', 'bd']))
   })
 
   it('多段译文按顺序拼接', async () => {
     mockRoutes({
       [GOOGLE]: () => json([[['第一段。', 'a', null], ['第二段。', 'b', null]], null, 'en']),
     })
-    await expect(googleTranslate('a b', 'zh-CN')).resolves.toBe('第一段。第二段。')
+    await expect(googleTranslate('a b', 'zh-CN')).resolves.toEqual({
+      translation: '第一段。第二段。',
+    })
+  })
+
+  it('带词典响应时一并返回', async () => {
+    mockRoutes({
+      [GOOGLE]: () => json([
+        [['主张', 'assertion', null]],
+        [['名词', ['主张', '断言']]],
+        'en',
+      ]),
+    })
+    await expect(googleTranslate('assertion', 'zh-CN')).resolves.toEqual({
+      translation: '主张',
+      dictionary: [{ pos: '名词', meanings: ['主张', '断言'] }],
+    })
   })
 
   it('HTTP 错误和坏响应都抛 MtError', async () => {
@@ -170,6 +227,24 @@ describe('quickTranslate', () => {
     const out = await quickTranslate('word', { provider: 'microsoft', explainLanguage: '简体中文' })
     expect(out).toEqual({ translation: '微软的结果', provider: 'microsoft', fellBack: false })
     expect(log.some(r => r.url.startsWith(GOOGLE))).toBe(false)
+  })
+
+  it('首选谷歌时带回词典字段', async () => {
+    mockRoutes({
+      [GOOGLE]: () => json([
+        [['主张', 'assertion', null]],
+        [['名词', ['主张', '断言']]],
+        'en',
+      ]),
+    })
+
+    const out = await quickTranslate('assertion', { provider: 'google', explainLanguage: '简体中文' })
+    expect(out).toEqual({
+      translation: '主张',
+      provider: 'google',
+      fellBack: false,
+      dictionary: [{ pos: '名词', meanings: ['主张', '断言'] }],
+    })
   })
 
   it('首选失败时自动回退到另一家，并标记 fellBack', async () => {

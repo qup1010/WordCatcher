@@ -36,7 +36,7 @@ export default function App() {
       setLoaded(true)
     })
     // 打开页面时静默探测一次 Anki，让状态徽章一开始就是真的
-    void sendMessage({ type: 'check-anki' }).then(res => setAnkiAlive(res.ok))
+    void sendMessage({ type: 'check-anki' }).then(res => setAnkiAlive(Boolean(res?.ok)))
   }, [])
 
   // 自动保存：改动后 400ms 落盘，不需要手动点保存

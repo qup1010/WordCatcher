@@ -21,17 +21,29 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
     await flush()
 
     const res = await sendMessage({ type: 'check-anki' })
-    onAliveChange(res.ok)
-    if (!res.ok) {
-      setStatus({ kind: 'err', text: res.error })
+    if (!res || !res.ok) {
+      onAliveChange(false)
+      setStatus({ kind: 'err', text: res?.error ?? '扩展后台无响应，试试重新加载扩展。' })
+      return
+    }
+    onAliveChange(true)
+
+    // 连上了就顺手把模板刷成最新的；失败时把真实原因展示出来，方便排查坏模板
+    const sync = await sendMessage({ type: 'sync-anki-templates' })
+    if (sync?.ok) {
+      setStatus({
+        kind: 'ok',
+        text: `连接正常（AnkiConnect v${res.data.version}），四模式卡片模板已同步。`,
+      })
       return
     }
 
-    // 连上了就顺手把模板刷成最新的；同步失败不算致命，首张卡保存时还会再建一次
-    const sync = await sendMessage({ type: 'sync-anki-templates' })
-    setStatus(sync.ok
-      ? { kind: 'ok', text: `连接正常（AnkiConnect v${res.data.version}），卡片模板已同步。` }
-      : { kind: 'ok', text: `连接正常（v${res.data.version}）。首张卡保存时会自动创建模板。` })
+    setStatus({
+      kind: 'err',
+      text: sync?.error
+        ? `Anki 已连接（v${res.data.version}），但模板同步失败：${sync.error}`
+        : `Anki 已连接（v${res.data.version}），但模板同步无响应。请重新加载扩展后再试。`,
+    })
   }
 
   return (
@@ -56,7 +68,11 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
         <span>牌组</span>
         <input value={s.anki.deckName} onChange={e => patchAnki({ deckName: e.target.value })} />
       </label>
-      <p className="hint">不存在会自动创建。</p>
+      <p className="hint">
+        不存在会自动创建。新卡会按模式分到子牌组：
+        Context（语境挖空）、Recognition（词→义）、Production（义→词）、Listening（听音）。
+        复习时在 Anki 里点对应子牌组即可，互不混在一起。
+      </p>
 
       <label className="field">
         <span>笔记类型</span>
@@ -65,6 +81,7 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
           onChange={e => patchAnki({ noteTypeName: e.target.value })}
         />
       </label>
+      <p className="hint">默认「Word Catcher」。不存在会自动创建四模式模板。</p>
 
       <div className="field">
         <span>原句挖空</span>

@@ -70,7 +70,7 @@ export const settingsSchema = z.object({
   anki: z.object({
     url: z.string().default('http://127.0.0.1:8765'),
     deckName: z.string().default('Word Catcher'),
-    noteTypeName: z.string().default('Word Catcher Basic'),
+    noteTypeName: z.string().default('Word Catcher'),
     /** Anki 卡片模板里 {{tts}} 标签用的语言，决定复习时的朗读发音 */
     ttsLang: z.string().default('en_US'),
     /** 是否在卡片正面把原句里的目标词挖空 */

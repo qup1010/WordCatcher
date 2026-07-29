@@ -127,11 +127,22 @@ describe('ensureDeckAndModel', () => {
     expect(created.params.inOrderFields).toContain('Word')
     expect(created.params.inOrderFields).toContain('SentencePlain')
     expect(created.params.isCloze).toBe(false)
+
+    const names = created.params.cardTemplates.map((t: { Name: string }) => t.Name)
+    expect(names).toEqual(['Context', 'Recognition', 'Production', 'Listening'])
   })
 
-  it('已经存在时不重复创建', async () => {
+  it('已经存在时不重复创建，但会刷新模板', async () => {
     const calls = mockAnki((action) => {
-      if (action === 'deckNames') return [settings.anki.deckName]
+      if (action === 'deckNames') {
+        return [
+          settings.anki.deckName,
+          `${settings.anki.deckName}::Context`,
+          `${settings.anki.deckName}::Recognition`,
+          `${settings.anki.deckName}::Production`,
+          `${settings.anki.deckName}::Listening`,
+        ]
+      }
       if (action === 'modelNames') return [settings.anki.noteTypeName]
       return null
     })
@@ -141,24 +152,32 @@ describe('ensureDeckAndModel', () => {
     const actions = calls.map(c => c.action)
     expect(actions).not.toContain('createDeck')
     expect(actions).not.toContain('createModel')
+    expect(actions).toContain('updateModelTemplates')
+    expect(actions).toContain('updateModelStyling')
   })
 
-  it('卡片模板把 tts 标签放在背面，避免正面就念出答案', async () => {
+  it('Context 模板把 tts 放在背面；Listening 正面含字段替换', async () => {
     const calls = mockAnki((action) => {
       if (action === 'deckNames' || action === 'modelNames') return []
       return null
     })
 
     await ensureDeckAndModel(settings)
-    const tpl = calls.find(c => c.action === 'createModel')!.params.cardTemplates[0]
+    const tpls = calls.find(c => c.action === 'createModel')!.params.cardTemplates
 
-    expect(tpl.Back).toContain('{{tts en_US:Word}}')
-    expect(tpl.Front).not.toContain('tts')
+    const context = tpls.find((t: { Name: string }) => t.Name === 'Context')
+    expect(context.Back).toContain('{{tts en_US:Word}}')
+    expect(context.Front).not.toContain('tts')
+
+    const listening = tpls.find((t: { Name: string }) => t.Name === 'Listening')
+    // Anki 要求正面有字段替换，否则报「内容模板正面应有字段替换」
+    expect(listening.Front).toContain('{{tts en_US:Word}}')
+    expect(listening.Back).toContain('{{Word}}')
   })
 })
 
 describe('updateModelTemplates', () => {
-  it('按当前语言设置刷新模板和样式', async () => {
+  it('一次请求刷完所有模式模板和样式', async () => {
     const calls = mockAnki(() => null)
     await updateModelTemplates({
       ...settings,
@@ -168,32 +187,71 @@ describe('updateModelTemplates', () => {
     const actions = calls.map(c => c.action)
     expect(actions).toEqual(['updateModelTemplates', 'updateModelStyling'])
 
-    const tpl = calls[0].params.model.templates.Recall
-    expect(tpl.Back).toContain('{{tts ja_JP:Word}}')
+    const templates = calls[0].params.model.templates
+    expect(Object.keys(templates).sort()).toEqual([
+      'Context', 'Listening', 'Production', 'Recognition',
+    ])
+    expect(templates.Context.Back).toContain('{{tts ja_JP:Word}}')
+    expect(templates.Listening.Front).toContain('{{tts ja_JP:Word}}')
   })
 })
 
 describe('addNote', () => {
-  it('把词条写入指定牌组并打上标签', async () => {
+  it('把词条写入指定牌组并打上标签，再按模板分到子牌组', async () => {
+    const noteId = 1748392847362
     const calls = mockAnki((action) => {
-      if (action === 'deckNames') return [settings.anki.deckName]
+      if (action === 'deckNames') {
+        return [
+          settings.anki.deckName,
+          `${settings.anki.deckName}::Context`,
+          `${settings.anki.deckName}::Recognition`,
+          `${settings.anki.deckName}::Production`,
+          `${settings.anki.deckName}::Listening`,
+        ]
+      }
       if (action === 'modelNames') return [settings.anki.noteTypeName]
-      if (action === 'addNote') return 1748392847362
+      if (action === 'addNote') return noteId
+      if (action === 'findCards') return [101, 102, 103, 104]
+      if (action === 'cardsInfo') {
+        return [
+          { cardId: 101, ord: 0 },
+          { cardId: 102, ord: 1 },
+          { cardId: 103, ord: 2 },
+          { cardId: 104, ord: 3 },
+        ]
+      }
       return null
     })
 
-    await expect(addNote(sampleCard, settings)).resolves.toBe(1748392847362)
+    await expect(addNote(sampleCard, settings)).resolves.toBe(noteId)
 
     const note = calls.find(c => c.action === 'addNote')!.params.note
     expect(note.deckName).toBe(settings.anki.deckName)
     expect(note.tags).toContain('word-catcher')
     expect(note.fields.Word).toBe('devastate')
     expect(note.options.allowDuplicate).toBe(false)
+
+    const moves = calls.filter(c => c.action === 'changeDeck')
+    expect(moves).toHaveLength(4)
+    expect(moves.map(c => c.params.deck).sort()).toEqual([
+      `${settings.anki.deckName}::Context`,
+      `${settings.anki.deckName}::Listening`,
+      `${settings.anki.deckName}::Production`,
+      `${settings.anki.deckName}::Recognition`,
+    ])
   })
 
   it('重复词给出友好提示而不是抛 Anki 的原始英文报错', async () => {
     mockAnki((action) => {
-      if (action === 'deckNames') return [settings.anki.deckName]
+      if (action === 'deckNames') {
+        return [
+          settings.anki.deckName,
+          `${settings.anki.deckName}::Context`,
+          `${settings.anki.deckName}::Recognition`,
+          `${settings.anki.deckName}::Production`,
+          `${settings.anki.deckName}::Listening`,
+        ]
+      }
       if (action === 'modelNames') return [settings.anki.noteTypeName]
       if (action === 'addNote') return new Error('cannot create note because it is a duplicate')
       return null
@@ -207,7 +265,15 @@ describe('addNote', () => {
 
   it('其他错误原样上抛，不被重复词分支吞掉', async () => {
     mockAnki((action) => {
-      if (action === 'deckNames') return [settings.anki.deckName]
+      if (action === 'deckNames') {
+        return [
+          settings.anki.deckName,
+          `${settings.anki.deckName}::Context`,
+          `${settings.anki.deckName}::Recognition`,
+          `${settings.anki.deckName}::Production`,
+          `${settings.anki.deckName}::Listening`,
+        ]
+      }
       if (action === 'modelNames') return [settings.anki.noteTypeName]
       if (action === 'addNote') return new Error('model was not found')
       return null
