@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
+    "release": "node scripts/release.mjs",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

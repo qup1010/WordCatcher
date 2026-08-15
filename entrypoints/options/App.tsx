@@ -97,6 +97,8 @@ export default function App() {
 
   const sectionProps = { s, onChange: setS, flush }
 
+  const appVersion = browser.runtime.getManifest?.()?.version || '0.1.1'
+
   return (
     <div className="shell">
       {/* ── 侧边栏 ── */}
@@ -104,7 +106,7 @@ export default function App() {
         <div className="brand">
           <div className="brand-header">
             <div className="brand-word">word·<em>catcher</em></div>
-            <span className="brand-badge">v0.1.1</span>
+            <span className="brand-badge">v{appVersion}</span>
           </div>
           <div className="brand-meta">
             <span className="brand-reading">/wɜːd ˈkætʃə(r)/</span>

@@ -21,6 +21,8 @@ function GithubIcon({ size = 14 }: { size?: number }) {
 }
 
 export function AboutSection(_props: SectionProps) {
+  const version = browser.runtime.getManifest?.()?.version || '0.1.1'
+
   return (
     <Section
       id="sec-about"
@@ -38,7 +40,7 @@ export function AboutSection(_props: SectionProps) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}>
-              Word Catcher <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--teal)', fontFamily: 'var(--font-sans)', background: 'var(--teal-wash)', padding: '2px 8px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hairline)', marginLeft: 6 }}>v0.1.1</span>
+              Word Catcher <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--teal)', fontFamily: 'var(--font-sans)', background: 'var(--teal-wash)', padding: '2px 8px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hairline)', marginLeft: 6 }}>v{version}</span>
             </div>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
               聚焦真实阅读流：提供即时机翻、本地离线词库与 AI 语境释义，并支持一键将生词、例句及记忆线索同步至本地 Anki 单词本。
