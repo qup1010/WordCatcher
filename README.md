@@ -105,3 +105,5 @@ pnpm build
 * **[Anki-Connect](https://git.sr.ht/~foosoft/anki-connect)** (by [@FooSoft](https://foosoft.net/projects/anki-connect/))  
   提供与本地 Anki 桌面端通信的 API 桥梁。
 * 本扩展自身源码遵循 **[MIT License](LICENSE)** 开源协议。
+
+**友情链接** · [**LINUX DO**](https://linux.do/)

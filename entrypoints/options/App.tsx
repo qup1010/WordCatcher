@@ -1,6 +1,7 @@
-import { Check } from 'lucide-react'
+import { BookOpen, Check, Database, Info, Layers, Sparkles, Volume2, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sendMessage } from '@/lib/messaging'
+import type { DictMeta } from '@/lib/open-dict/types'
 import { getSettings, isAiConfigured, saveSettings } from '@/lib/settings'
 import { DEFAULT_SETTINGS, type Settings } from '@/lib/types'
 import { StatusChip } from './components/controls'
@@ -13,13 +14,13 @@ import { MtSection } from './sections/MtSection'
 import { UxSection } from './sections/UxSection'
 
 const NAV_SECTIONS = [
-  { id: 'sec-ai', label: 'AI 接口' },
-  { id: 'sec-mt', label: '快速翻译' },
-  { id: 'sec-dict', label: '离线词典' },
-  { id: 'sec-anki', label: 'Anki 单词本' },
-  { id: 'sec-ux', label: '划词与朗读' },
-  { id: 'sec-data', label: '数据与维护' },
-  { id: 'sec-about', label: '关于插件' },
+  { id: 'sec-ai', label: 'AI 接口', icon: Sparkles },
+  { id: 'sec-mt', label: '快速翻译', icon: Zap },
+  { id: 'sec-dict', label: '离线词典', icon: BookOpen },
+  { id: 'sec-anki', label: 'Anki 单词本', icon: Layers },
+  { id: 'sec-ux', label: '划词与朗读', icon: Volume2 },
+  { id: 'sec-data', label: '数据与维护', icon: Database },
+  { id: 'sec-about', label: '关于插件', icon: Info },
 ] as const
 
 /**
@@ -31,16 +32,22 @@ export default function App() {
   const [loaded, setLoaded] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [ankiAlive, setAnkiAlive] = useState<boolean | null>(null)
+  const [dictMeta, setDictMeta] = useState<DictMeta | null>(null)
   const [activeNav, setActiveNav] = useState<string>(NAV_SECTIONS[0].id)
   const firstRender = useRef(true)
+
+  const refreshStatuses = () => {
+    // 静默探测 Anki 与离线词库状态
+    void sendMessage({ type: 'check-anki' }).then(res => setAnkiAlive(Boolean(res?.ok)))
+    void sendMessage({ type: 'dict-status' }).then(res => res?.ok && setDictMeta(res.data))
+  }
 
   useEffect(() => {
     void getSettings().then((v) => {
       setS(v)
       setLoaded(true)
     })
-    // 打开页面时静默探测一次 Anki，让状态徽章一开始就是真的
-    void sendMessage({ type: 'check-anki' }).then(res => setAnkiAlive(Boolean(res?.ok)))
+    refreshStatuses()
   }, [])
 
   // 自动保存：改动后 400ms 落盘，不需要手动点保存
@@ -84,6 +91,7 @@ export default function App() {
   }, [s])
 
   const aiReady = isAiConfigured(s)
+  const dictReady = dictMeta?.status === 'ready' && dictMeta.entryCount > 0
 
   if (!loaded) return null
 
@@ -94,51 +102,69 @@ export default function App() {
       {/* ── 侧边栏 ── */}
       <aside className="side">
         <div className="brand">
-          <div className="brand-word">word·<em>catcher</em></div>
+          <div className="brand-header">
+            <div className="brand-word">word·<em>catcher</em></div>
+            <span className="brand-badge">v0.1.1</span>
+          </div>
           <div className="brand-meta">
             <span className="brand-reading">/wɜːd ˈkætʃə(r)/</span>
             <span className="brand-pos">n.</span>
           </div>
-          <p className="brand-def">网页划词，离线词典/快译或 AI 语境释义，一键存入 Anki。</p>
+          <p className="brand-def">网页划词，离线词典/快译或 AI 语境释义，一键存入 Anki 单词本。</p>
         </div>
 
         <nav>
-          {NAV_SECTIONS.map(({ id, label }) => (
+          {NAV_SECTIONS.map(({ id, label, icon: Icon }) => (
             <a
               key={id}
               href={`#${id}`}
-              className={activeNav === id ? 'nav-on' : ''}
+              className={`nav-item ${activeNav === id ? 'nav-on' : ''}`}
               onClick={(e) => {
                 e.preventDefault()
                 document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }}
             >
-              {label}
+              <Icon size={15} className="nav-icon" />
+              <span>{label}</span>
             </a>
           ))}
         </nav>
 
-        <div className="side-status">
-          <div className="status-row">
-            <span>AI 接口</span>
-            <StatusChip ok={aiReady} okText="已配置" badText="未配置" />
+        <div className="side-status-card">
+          <div className="side-status-title">
+            <span className="side-status-dot" />
+            <span>服务就绪状态</span>
           </div>
-          <div className="status-row">
-            <span>Anki</span>
-            {ankiAlive === null
-              ? <span className="chip">检测中</span>
-              : <StatusChip ok={ankiAlive} okText="已连接" badText="未连接" />}
+          <div className="side-status-list">
+            <div className="status-row">
+              <span>AI 接口</span>
+              <StatusChip ok={aiReady} okText="已配置" badText="未配置" />
+            </div>
+            <div className="status-row">
+              <span>离线词库</span>
+              <StatusChip
+                ok={dictReady}
+                okText="已就绪"
+                badText="未安装"
+              />
+            </div>
+            <div className="status-row">
+              <span>Anki 单词本</span>
+              {ankiAlive === null
+                ? <span className="chip">检测中</span>
+                : <StatusChip ok={ankiAlive} okText="已连接" badText="未连接" />}
+            </div>
           </div>
-        </div>
 
-        <div className={`save-note ${saveState !== 'idle' ? 'save-note-show' : ''}`}>
-          {saveState === 'saving' && '保存中…'}
-          {saveState === 'saved' && (
-            <>
-              <Check size={12} />
-              <span>已自动保存</span>
-            </>
-          )}
+          <div className={`save-note ${saveState !== 'idle' ? 'save-note-show' : ''}`}>
+            {saveState === 'saving' && <span>保存中…</span>}
+            {saveState === 'saved' && (
+              <>
+                <Check size={12} />
+                <span>已自动保存</span>
+              </>
+            )}
+          </div>
         </div>
       </aside>
 

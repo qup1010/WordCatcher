@@ -2,7 +2,7 @@
   "name": "word-catcher",
   "description": "划词 → AI 结合上下文解释 → 一键存入 Anki",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",
