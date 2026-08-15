@@ -1,10 +1,11 @@
-import { Check, Sparkles, Volume2, Zap } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Sparkles, Volume2, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PartialEntry } from '@/lib/ai'
 import { resolveOffset } from '@/lib/anki'
 import type { GoogleDictEntry, MtProvider } from '@/lib/machine-translate'
 import { MT_PROVIDER_LABELS } from '@/lib/machine-translate'
 import { openEntryStream, sendMessage } from '@/lib/messaging'
+import type { QuickDictResult } from '@/lib/open-dict/types'
 import { place } from '@/lib/placement'
 import { type SelectionContext, extractContext } from '@/lib/selection-context'
 import { getSettings, watchSettings } from '@/lib/settings'
@@ -12,7 +13,8 @@ import { isTtsSupported, speak, stopSpeaking } from '@/lib/tts'
 import { DEFAULT_SETTINGS, type Settings, type WordEntry } from '@/lib/types'
 
 const PANEL_WIDTH = 372
-const QUICK_WIDTH = 304
+const QUICK_WIDTH = 320
+const QUICK_LONG_WIDTH = 440
 const PILL_WIDTH = 152
 const PILL_HEIGHT = 34
 
@@ -84,6 +86,13 @@ function EntryBody({ entry, ctx, ttsReady, onSpeak, streaming }: EntryBodyProps)
         {streaming && !entry.contextTranslation && <span className="wc-caret" aria-hidden />}
       </div>
 
+      {entry.memoryHook && (
+        <div className="wc-hook-card">
+          <div className="wc-hook-card-title">💡 记忆线索</div>
+          <div>{entry.memoryHook}</div>
+        </div>
+      )}
+
       <div className="wc-context">
         <div>{highlight(ctx)}</div>
         {entry.contextTranslation && (
@@ -100,6 +109,12 @@ type Phase =
   | { kind: 'quick-loading' }
   | {
     kind: 'quick'
+    mode: 'dict'
+    dict: QuickDictResult
+  }
+  | {
+    kind: 'quick'
+    mode: 'mt'
     translation: string
     provider: MtProvider
     fellBack: boolean
@@ -177,6 +192,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const [anchor, setAnchor] = useState<Anchor | null>(null)
   const [dupe, setDupe] = useState<Dupe>('unknown')
   const panelRef = useRef<HTMLDivElement>(null)
+  const [expandDict, setExpandDict] = useState(false)
   const [size, setSize] = useState({ width: PANEL_WIDTH, height: 0 })
   /** 当前流式请求的取消函数，换词或关闭面板时要调一下 */
   const streamRef = useRef<(() => void) | null>(null)
@@ -195,6 +211,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     setSave({ kind: 'idle' })
     setDupe('unknown')
     setAnchor(null)
+    setExpandDict(false)
   }, [])
 
   /**
@@ -222,10 +239,18 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
   const quickLookup = useCallback(async (ctx: SelectionContext) => {
     setPhase({ kind: 'quick-loading' })
+    setExpandDict(false)
     const res = await sendMessage({ type: 'quick-translate', payload: { text: ctx.selection } })
-    setPhase(res.ok
-      ? { kind: 'quick', ...res.data }
-      : { kind: 'quick-error', message: res.error })
+    if (!res.ok) {
+      setPhase({ kind: 'quick-error', message: res.error })
+      return
+    }
+
+    if (res.data.mode === 'dict') {
+      setPhase({ kind: 'quick', mode: 'dict', dict: res.data.dict })
+    } else {
+      setPhase({ kind: 'quick', mode: 'mt', ...res.data })
+    }
   }, [])
 
   // ── 选区监听 ──────────────────────────────────
@@ -249,9 +274,15 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         const rect = range.getBoundingClientRect()
         setAnchor({ ctx, range: range.cloneRange(), rect })
         setSave({ kind: 'idle' })
+        setExpandDict(false)
 
-        if (settings.triggerMode === 'auto') lookup(ctx)
-        else setPhase({ kind: 'trigger' })
+        if (settings.triggerMode === 'auto' || settings.triggerMode === 'ai') {
+          lookup(ctx)
+        } else if (settings.triggerMode === 'quick') {
+          void quickLookup(ctx)
+        } else {
+          setPhase({ kind: 'trigger' })
+        }
       }, 0)
     }
 
@@ -271,7 +302,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       document.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [shadowHost, settings.triggerMode, lookup, dismiss])
+  }, [shadowHost, settings.triggerMode, lookup, quickLookup, dismiss])
 
   // 页面滚动时重新贴合选区，否则面板会飘在错误的位置
   useEffect(() => {
@@ -292,7 +323,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const dupeWord = phase.kind === 'result'
     ? phase.entry.word
     : phase.kind === 'quick' && anchor
-      ? anchor.ctx.selection
+      ? (phase.mode === 'dict' ? phase.dict.headword : anchor.ctx.selection)
       : null
 
   useEffect(() => {
@@ -319,7 +350,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [phase.kind])
+  }, [phase.kind, expandDict])
 
   const saveCard = useCallback(async (entry: WordEntry) => {
     if (!anchor) return
@@ -358,9 +389,23 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     await saveCard(phase.entry)
   }, [phase, saveCard])
 
-  /** 快译结果直接存卡：没有 AI 的词形还原和语境释义，用机器翻译当释义 */
+  /** 快译结果直接存卡：有离线词典用离线词典，否则用机器翻译 */
   const onSaveQuick = useCallback(async () => {
     if (phase.kind !== 'quick' || !anchor) return
+
+    if (phase.mode === 'dict') {
+      const d = phase.dict
+      await saveCard({
+        word: d.headword,
+        reading: d.reading,
+        partOfSpeech: d.primaryPos || '',
+        definition: d.coreMeanings.join('；'),
+        contextTranslation: '',
+        memoryHook: d.memoryHook,
+      })
+      return
+    }
+
     const dict = phase.dictionary
     // 有词典时：首个词性 + 各义项拼成释义，比单句译文更适合进单词本
     const pos = dict?.[0]?.pos ?? ''
@@ -405,14 +450,14 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     return (
       <div className="wc-root wc-layer" style={{ left: pos.left, top: pos.top }}>
         <div className="wc-pill">
-          <button title="机器翻译" onClick={() => void quickLookup(anchor.ctx)}>
+          <button title="快速查词/翻译" onClick={() => void quickLookup(anchor.ctx)}>
             <Zap size={14} />
             <span>快译</span>
           </button>
           <div className="wc-pill-sep" />
-          <button title="AI 语境释义" onClick={() => lookup(anchor.ctx)}>
+          <button title="结合语境进行 AI 释义" onClick={() => lookup(anchor.ctx)}>
             <Sparkles size={14} />
-            <span>AI 详解</span>
+            <span>AI 释义</span>
           </button>
         </div>
       </div>
@@ -421,42 +466,58 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
   // ── 快译迷你面板 ──────────────────────────────
   if (phase.kind === 'quick-loading' || phase.kind === 'quick' || phase.kind === 'quick-error') {
-    const pos = placeAt(anchor.rect, QUICK_WIDTH, size.height || 90)
+    const rawSelection = anchor.ctx.selection.trim()
+    const isLongText = rawSelection.length > 35 || rawSelection.includes('\n') || rawSelection.split(/\s+/).length > 5
+    const panelWidth = isLongText ? QUICK_LONG_WIDTH : QUICK_WIDTH
+    const pos = placeAt(anchor.rect, panelWidth, size.height || 90)
+    const isDict = phase.kind === 'quick' && phase.mode === 'dict'
+    const wordToSpeak = isDict ? phase.dict.headword : anchor.ctx.selection
+
     return (
       <div className="wc-root wc-layer" style={{ left: pos.left, top: pos.top }}>
         <div
-          className="wc-panel wc-panel-quick"
+          className={`wc-panel wc-panel-quick ${isLongText ? 'wc-panel-long' : ''}`}
           ref={panelRef}
           style={{ maxHeight: pos.maxHeight }}
           role="dialog"
-          aria-label={`「${anchor.ctx.selection}」的快速翻译`}
+          aria-label={isLongText ? '快速翻译' : `「${anchor.ctx.selection}」的快速查词`}
         >
           <div className="wc-fade" key={phase.kind} aria-live="polite">
             <div className="wc-head">
-              <span className="wc-word wc-word-sm">{anchor.ctx.selection}</span>
+              {isLongText ? (
+                <span className="wc-head-title">译文</span>
+              ) : (
+                <span className="wc-word wc-word-sm">
+                  {isDict ? phase.dict.headword : anchor.ctx.selection}
+                </span>
+              )}
+              {!isLongText && isDict && phase.dict.reading && (
+                <span className="wc-reading" style={{ fontSize: 13 }}>
+                  /{phase.dict.reading}/
+                </span>
+              )}
               {ttsReady && (
                 <button
                   className="wc-speak"
-                  title="试听读音"
-                  onClick={() => speakText(anchor.ctx.selection)}
+                  title={isLongText ? '朗读原文' : '试听读音'}
+                  onClick={() => speakText(wordToSpeak)}
                 >
                   <Volume2 size={15} />
                 </button>
               )}
               <div className="wc-spacer" />
-              {/*
-                服务商标注收进词头行的右端：它是元信息，不该占正文一整行。
-                只放服务商名，「已自动切换」用描边变色 + tooltip 表达——
-                多两个字就会把词头挤到断词，而这一行的主角是用户划的那个词。
-              */}
               {phase.kind === 'quick' && (
                 <span
-                  className={`wc-tag ${phase.fellBack ? 'wc-tag-alt' : ''}`}
-                  title={phase.fellBack
-                    ? `首选服务连不上，已自动切换到${MT_PROVIDER_LABELS[phase.provider]}`
-                    : undefined}
+                  className={`wc-tag ${phase.mode === 'mt' && phase.fellBack ? 'wc-tag-alt' : ''}`}
+                  title={
+                    phase.mode === 'dict'
+                      ? '已从本地 Open Dictionary 离线词库检索'
+                      : phase.fellBack
+                        ? `首选服务连不上，已自动切换到${MT_PROVIDER_LABELS[phase.provider]}`
+                        : undefined
+                  }
                 >
-                  {MT_PROVIDER_LABELS[phase.provider]}
+                  {phase.mode === 'dict' ? '离线词典' : MT_PROVIDER_LABELS[phase.provider]}
                 </span>
               )}
             </div>
@@ -464,14 +525,77 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             {phase.kind === 'quick-loading' && (
               <div className="wc-state">
                 <Dots />
-                <span>翻译中</span>
+                <span>查询中</span>
               </div>
             )}
 
-            {phase.kind === 'quick' && (
+            {/* ── 离线词典视图 ── */}
+            {phase.kind === 'quick' && phase.mode === 'dict' && (
               <div className="wc-quick-body">
-                <div className="wc-def">{phase.translation}</div>
-                {phase.dictionary && phase.dictionary.length > 0 && (
+                {phase.dict.coreGroups && phase.dict.coreGroups.length > 0 ? (
+                  <div className="wc-dict-core-groups">
+                    {phase.dict.coreGroups.map((group, gIdx) => (
+                      <div className="wc-dict-group-row" key={gIdx}>
+                        <span className="wc-pos-badge">{group.pos}</span>
+                        <span className="wc-group-meanings">{group.meanings.join('； ')}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="wc-dict-core-list">
+                    {phase.dict.coreMeanings.map((m, idx) => (
+                      <div className="wc-dict-core-item" key={idx}>
+                        {m}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {phase.dict.memoryHook && (
+                  <div className="wc-hook-card">
+                    <div className="wc-hook-card-title">💡 记忆线索</div>
+                    <div>{phase.dict.memoryHook}</div>
+                  </div>
+                )}
+
+                {phase.dict.allPosGroups.length > 0 && (
+                  <div>
+                    <button
+                      className="wc-dict-toggle"
+                      onClick={() => setExpandDict(!expandDict)}
+                    >
+                      {expandDict ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      <span>{expandDict ? '收起全部义项' : '展开全部词性与义项'}</span>
+                    </button>
+
+                    {expandDict && (
+                      <div className="wc-dict" style={{ marginTop: 4 }}>
+                        {phase.dict.allPosGroups.map((pg, gIdx) => (
+                          <div className="wc-dict-pos-group" key={gIdx}>
+                            <div className="wc-dict-pos-header">
+                              {pg.pos} {pg.summary ? `· ${pg.summary}` : ''}
+                            </div>
+                            {pg.meanings.map((m, mIdx) => (
+                              <div className="wc-dict-meaning-item" key={mIdx}>
+                                • {m.short_gloss || m.learner_explanation}
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── 在线机翻视图 ── */}
+            {phase.kind === 'quick' && phase.mode === 'mt' && (
+              <div className="wc-quick-body">
+                <div className={`wc-def ${isLongText ? 'wc-def-long' : ''}`}>
+                  {phase.translation}
+                </div>
+                {!isLongText && phase.dictionary && phase.dictionary.length > 0 && (
                   <div className="wc-dict">
                     {phase.dictionary.map(entry => (
                       <div className="wc-dict-row" key={entry.pos}>
@@ -501,11 +625,11 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               )}
               <button
                 className="wc-btn wc-btn-ghost wc-btn-accent"
-                title="AI 语境释义"
+                title="结合语境进行 AI 释义"
                 onClick={() => lookup(anchor.ctx)}
               >
                 <Sparkles size={14} />
-                <span>AI 详解</span>
+                <span>AI 释义</span>
               </button>
               {phase.kind === 'quick' && (
                 <button

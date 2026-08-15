@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Word Catcher · 产品展示</title>
+<link rel="stylesheet" href="/css/content.css">
+<style>
+  :root {
+    --bg-page: #f6f3ee;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 48px 32px;
+    background: var(--bg-page);
+    font-family: var(--font-sans);
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+  }
+  .stage {
+    display: flex;
+    align-items: flex-start;
+    gap: 36px;
+    max-width: 1060px;
+    width: 100%;
+  }
+
+  /* 模拟网页阅读器 */
+  .browser-window {
+    flex: 1;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+    border: 1px solid #e8e3d9;
+    overflow: hidden;
+    position: relative;
+  }
+  .browser-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: #fdfcf9;
+    border-bottom: 1px solid #eee9e0;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot-r { background: #ff5f56; }
+  .dot-y { background: #ffbd2e; }
+  .dot-g { background: #27c93f; }
+  .browser-url {
+    flex: 1;
+    margin-left: 10px;
+    background: #f1ede4;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 11.5px;
+    color: #8c8375;
+  }
+  .browser-content {
+    padding: 28px 32px 40px;
+    font-family: Georgia, 'Iowan Old Style', serif;
+    font-size: 16px;
+    line-height: 1.8;
+    color: #2b2823;
+  }
+  .browser-content h2 {
+    font-size: 24px;
+    margin: 0 0 16px;
+    color: #1a1815;
+  }
+  .reading-mark {
+    background: rgba(232, 169, 78, 0.25);
+    border-bottom: 2px solid #e8a94e;
+    padding: 1px 2px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+
+  /* 浮层绝对定位在词旁边 */
+  .popup-anchor {
+    position: absolute;
+    top: 140px;
+    left: 180px;
+    z-index: 10;
+  }
+
+  /* 模拟 Anki 卡片 */
+  .anki-preview {
+    width: 330px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .anki-card-box {
+    background: #fdfcf9;
+    border-radius: 12px;
+    padding: 20px 22px;
+    border: 1px solid #e8e3d9;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    font-family: var(--font-sans);
+  }
+  .anki-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--teal);
+    letter-spacing: 0.04em;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .anki-sentence {
+    font-size: 15px;
+    line-height: 1.7;
+    color: #221f1a;
+  }
+  .anki-blank {
+    color: #b45309;
+    font-weight: 700;
+    border-bottom: 2px solid #b45309;
+    background: rgba(180, 83, 9, 0.06);
+    padding: 0 3px;
+  }
+  .anki-back {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--hairline);
+    font-size: 13px;
+  }
+  .anki-word {
+    font-family: Georgia, serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: #221f1a;
+  }
+  .anki-reading {
+    font-size: 13px;
+    color: var(--ink-faint);
+    margin-left: 4px;
+    font-style: normal;
+  }
+  .anki-pos {
+    font-style: italic;
+    color: var(--teal);
+    margin-left: 6px;
+    font-size: 12px;
+  }
+  .anki-def {
+    margin-top: 5px;
+    color: var(--ink);
+    font-size: 13.5px;
+  }
+  .anki-hook {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: var(--teal-wash);
+    border-left: 3px solid var(--teal);
+    border-radius: 4px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <!-- 浏览器网页与划词卡片 -->
+  <div class="browser-window">
+    <div class="browser-bar">
+      <span class="dot dot-r"></span>
+      <span class="dot dot-y"></span>
+      <span class="dot dot-g"></span>
+      <div class="browser-url">https://theatlantic.com/magazine/archive/mindful-reading</div>
+    </div>
+    <div class="browser-content">
+      <h2>The Art of Contextual Learning</h2>
+      <p>
+        When reading challenging texts, readers often encounter unfamiliar terms.
+        Instead of getting <span class="reading-mark">devastated</span> by complex vocabulary,
+        understanding words within their living context enables deep retention.
+      </p>
+      <p>
+        Every word carries a subtle nuance that standard dictionaries cannot fully convey.
+        Active vocabulary acquisition happens through repeated, meaningful exposure.
+      </p>
+    </div>
+
+    <!-- 真实渲染的 Word Catcher 划词面板 -->
+    <div class="popup-anchor">
+      <div class="wc-root wc-layer">
+        <div class="wc-panel" style="width: 360px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);">
+          <div class="wc-head">
+            <span class="wc-word">devastate</span>
+            <span class="wc-reading">/ˈdevəsteɪt/</span>
+            <button class="wc-speak" title="发音">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            </button>
+            <span class="wc-pos-badge">v.</span>
+          </div>
+
+          <div class="wc-def">使极度震惊、悲痛；摧毁</div>
+
+          <div class="wc-context">
+            <div>Instead of getting <mark>devastated</mark> by complex vocabulary...</div>
+            <div class="wc-context-trans">与其被复杂的词汇搞得手足无措...</div>
+          </div>
+
+          <div class="wc-hook-card">
+            <div class="wc-hook-card-title">💡 记忆线索</div>
+            <div>de- (向下/完全) + vast (空旷/荒废) → 使彻底荒废 → 极度震惊打击</div>
+          </div>
+
+          <div class="wc-actions">
+            <button class="wc-btn wc-btn-primary">存入 Anki</button>
+            <button class="wc-btn wc-btn-ghost wc-btn-accent">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z"/></svg>
+              <span>重新生成</span>
+            </button>
+            <div class="wc-spacer"></div>
+            <button class="wc-btn wc-btn-ghost">关闭</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Anki 同步卡片效果 -->
+  <div class="anki-preview">
+    <div class="anki-card-box">
+      <div class="anki-header">
+        <span>ANKI · 语境挖空卡片</span>
+        <span>Word Catcher</span>
+      </div>
+      <div class="anki-sentence">
+        Instead of getting <span class="anki-blank">[ ? ]</span> by complex vocabulary, understanding words...
+      </div>
+      <div class="anki-back">
+        <div class="anki-word">
+          devastate <span class="anki-reading">/ˈdevəsteɪt/</span> <span class="anki-pos">v.</span>
+        </div>
+        <div class="anki-def">使极度震惊、悲痛；摧毁</div>
+        <div class="anki-hook">
+          <strong>💡 记忆线索：</strong>de- (彻底) + vast (荒芜) → 遭受毁灭性打击
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

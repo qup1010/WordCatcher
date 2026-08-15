@@ -906,3 +906,126 @@ select:focus-visible {
   .btn:active { transform: none; }
   .switch-knob { transition: none; }
 }
+
+/* ── 帮助悬浮气泡 ──────────────────────────────── */
+
+.help-tip-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.help-tip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 3px;
+  color: var(--ink-faint);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.help-tip-btn:hover,
+.help-tip-btn-active {
+  color: var(--teal);
+  background: var(--teal-wash);
+}
+
+.help-tip-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink);
+  z-index: 100;
+  text-align: left;
+}
+
+/* 底部透明安全区：消除按钮与浮窗间的间隙断连 */
+.help-tip-pop::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 14px;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.help-tip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.help-tip-title {
+  font-weight: 650;
+  color: var(--teal);
+  font-size: 12.5px;
+}
+
+.help-tip-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 2px;
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.help-tip-close:hover {
+  color: var(--ink);
+  background: var(--sunken);
+}
+
+.help-tip-body ol {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+}
+
+.help-tip-body li {
+  margin-bottom: 4px;
+}
+
+.help-tip-links {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+}
+
+.help-tip-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--teal);
+  text-decoration: none;
+}
+
+.help-tip-links a:hover {
+  text-decoration: underline;
+}

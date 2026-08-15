@@ -112,7 +112,7 @@ export function DataSection({ s, onChange }: SectionProps) {
   return (
     <Section
       id="sec-data"
-      index={4}
+      index={5}
       title="数据与维护"
       intro="待写队列、AI 缓存和配置备份。平时不用管，出问题或者换机器时才需要。"
     >

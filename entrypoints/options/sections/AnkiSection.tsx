@@ -1,6 +1,8 @@
+import { ExternalLink } from 'lucide-react'
 import { useState } from 'react'
 import { sendMessage } from '@/lib/messaging'
 import type { Settings } from '@/lib/types'
+import { HelpTip } from '../components/HelpTip'
 import { Section } from '../components/Section'
 import { Switch } from '../components/controls'
 import type { SectionProps, Status } from './types'
@@ -49,13 +51,32 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
   return (
     <Section
       id="sec-anki"
-      index={2}
+      index={3}
       title="Anki 单词本"
       intro={(
         <>
-          卡片写入本地 Anki。需要
+          划词一键制卡并同步至本地 Anki。需安装
           <a href="https://apps.ankiweb.net/" target="_blank" rel="noreferrer"> Anki 桌面版</a>
-          和 AnkiConnect 插件（附加组件代码 <code>2055492159</code>），使用时保持 Anki 运行。
+          与 AnkiConnect 插件（插件代码 <code>2055492159</code>
+          <HelpTip title="如何安装 AnkiConnect 插件？">
+            <ol>
+              <li>打开 Anki 桌面版客户端；</li>
+              <li>点击菜单栏「工具」→「附加组件」→「获取附加组件」；</li>
+              <li>填入代码 <strong>2055492159</strong> 并确定安装；</li>
+              <li>重启 Anki 客户端并保持在后台运行。</li>
+            </ol>
+            <div className="help-tip-links">
+              <a href="https://foosoft.net/projects/anki-connect/" target="_blank" rel="noreferrer">
+                <span>AnkiConnect 官方项目主页</span>
+                <ExternalLink size={11} />
+              </a>
+              <a href="https://git.sr.ht/~foosoft/anki-connect" target="_blank" rel="noreferrer">
+                <span>源码仓库 (~foosoft/anki-connect)</span>
+                <ExternalLink size={11} />
+              </a>
+            </div>
+          </HelpTip>
+          ），使用时保持 Anki 在后台运行。
         </>
       )}
     >
@@ -65,13 +86,12 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
       </label>
 
       <label className="field">
-        <span>牌组</span>
+        <span>目标牌组</span>
         <input value={s.anki.deckName} onChange={e => patchAnki({ deckName: e.target.value })} />
       </label>
       <p className="hint">
-        不存在会自动创建。新卡会按模式分到子牌组：
-        Context（语境挖空）、Recognition（词→义）、Production（义→词）、Listening（听音）。
-        复习时在 Anki 里点对应子牌组即可，互不混在一起。
+        不存在时会自动创建。卡片会自动生成 4 种子牌组独立复习：
+        语境挖空 (Context)、看词识义 (Recognition)、看义写词 (Production)、听音辨义 (Listening)。
       </p>
 
       <label className="field">
@@ -81,7 +101,7 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
           onChange={e => patchAnki({ noteTypeName: e.target.value })}
         />
       </label>
-      <p className="hint">默认「Word Catcher」。不存在会自动创建四模式模板。</p>
+      <p className="hint">默认「Word Catcher」，首次同步或建卡时会自动配置卡片字段与排版样式。</p>
 
       <div className="field">
         <span>原句挖空</span>

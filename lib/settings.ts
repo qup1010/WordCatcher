@@ -48,13 +48,14 @@ export function normalizeSettings(raw: unknown): Settings {
   if (!raw || typeof raw !== 'object') return DEFAULT_SETTINGS
 
   const r = raw as Record<string, unknown>
-  const section = <K extends 'anki' | 'tts' | 'mt'>(key: K) => ({
+  const section = <K extends 'anki' | 'tts' | 'mt' | 'dict'>(key: K) => ({
     ...(DEFAULT_SETTINGS[key] as object),
     ...((r[key] as object | undefined) ?? {}),
   })
 
   const merged = {
     ai: normalizeAi(r.ai),
+    dict: section('dict'),
     anki: section('anki'),
     tts: section('tts'),
     mt: section('mt'),

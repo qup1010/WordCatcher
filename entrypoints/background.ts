@@ -17,6 +17,8 @@ import {
   type StreamEvent,
   type StreamStart,
 } from '@/lib/messaging'
+import { clearDict, getDictMeta, lookupWord } from '@/lib/open-dict/db'
+import { DICT_IMPORT_PORT, handleDictImportPort } from '@/lib/open-dict/importer'
 import {
   clearPending,
   enqueue,
@@ -59,16 +61,64 @@ async function handle(req: Request): Promise<Result<unknown>> {
       }
     }
 
+    case 'dict-status': {
+      const meta = await getDictMeta()
+      return { ok: true, data: meta }
+    }
+
+    case 'dict-clear': {
+      await clearDict()
+      return { ok: true, data: null }
+    }
+
+    case 'dict-lookup': {
+      const result = await lookupWord(req.payload.word)
+      return { ok: true, data: result }
+    }
+
     case 'quick-translate': {
-      const result = await quickTranslate(req.payload.text, {
+      const text = req.payload.text.trim()
+      const isShortWord = text.length > 0 && text.split(/\s+/).length <= 2
+
+      if (settings.dict.enabled && isShortWord) {
+        try {
+          const meta = await getDictMeta()
+          if (meta.status === 'ready') {
+            const dictRes = await lookupWord(text)
+            if (dictRes) {
+              return { ok: true, data: { mode: 'dict', dict: dictRes } }
+            }
+          }
+        } catch {
+          // 本地词典异常时平滑回退
+        }
+      }
+
+      // 未命中本地词典或为多词/长句，走机器翻译
+      const result = await quickTranslate(text, {
         provider: settings.mt.provider,
         explainLanguage: settings.explainLanguage,
       })
-      return { ok: true, data: result }
+      return { ok: true, data: { mode: 'mt', ...result } }
     }
 
     case 'save-card': {
       try {
+        // 快速存卡如果缺少句子翻译且有原句，顺带异步机翻补全
+        if (!req.payload.entry.contextTranslation && req.payload.sentence) {
+          try {
+            const mt = await quickTranslate(req.payload.sentence, {
+              provider: settings.mt.provider,
+              explainLanguage: settings.explainLanguage,
+            })
+            if (mt.translation) {
+              req.payload.entry.contextTranslation = mt.translation
+            }
+          } catch {
+            // 忽略机翻错误
+          }
+        }
+
         const noteId = await addNote(req.payload, settings)
         return { ok: true, data: { noteId, queued: false } }
       } catch (err) {
@@ -185,6 +235,18 @@ function handleEntryStream(port: Browser.runtime.Port): void {
           },
         })
 
+        // 尝试从本地词库补充记忆主线 (Memory Hook)
+        if (!entry.memoryHook && settings.dict.enabled) {
+          try {
+            const dictRes = await lookupWord(entry.word || req.selection)
+            if (dictRes?.memoryHook) {
+              entry.memoryHook = dictRes.memoryHook
+            }
+          } catch {
+            // ignore
+          }
+        }
+
         setCached(key, entry)
         if (alive) port.postMessage({ type: 'done', entry } satisfies StreamEvent)
       } catch (err) {
@@ -201,6 +263,7 @@ function handleEntryStream(port: Browser.runtime.Port): void {
 export default defineBackground(() => {
   browser.runtime.onConnect.addListener((port) => {
     if (port.name === ENTRY_STREAM_PORT) handleEntryStream(port)
+    else if (port.name === DICT_IMPORT_PORT) handleDictImportPort(port)
   })
 
   // 用 sendResponse + return true，而不是返回 Promise：

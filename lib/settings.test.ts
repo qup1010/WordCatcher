@@ -96,14 +96,14 @@ describe('getSettings / saveSettings', () => {
         ],
         activeId: 'p2',
       },
-      triggerMode: 'auto' as const,
+      triggerMode: 'quick' as const,
     }
     await saveSettings(next)
 
     const loaded = await getSettings()
     expect(loaded.ai.profiles).toHaveLength(2)
     expect(activeAiProfile(loaded).name).toBe('本地')
-    expect(loaded.triggerMode).toBe('auto')
+    expect(loaded.triggerMode).toBe('quick')
   })
 
   it('存储里是旧版脏数据时也能读出可用配置', async () => {

@@ -5,19 +5,15 @@ import { activeAiProfile } from './settings'
 import { type Settings, type WordEntry, wordEntrySchema } from './types'
 
 export function buildSystemPrompt(explainLanguage: string): string {
-  return `你是一个为语言学习者服务的词典助手。用户正在网页上阅读，划选了一个词或短语，你要**结合它所在的这句话**给出解释。
+  return `语言学习词典助手。根据用户划选的目标词及其上下文整句，给出精确分析：
+1. word: 还原词典原形（时态/复数/比较级等还原；固定短语保留短语）。
+2. reading: IPA 国际音标（不带斜杠），无法确定时为空字符串。
+3. partOfSpeech: 词性简写（如 n. / v. / adj. / adv. / phr.）。
+4. definition: 仅解释该词在【当前语境】中的含义，一句话精准释义（使用${explainLanguage}）。
+5. contextTranslation: 整句原句的自然通顺翻译（使用${explainLanguage}）。
 
-要求：
-- definition 只解释这个词在**当前这句话语境下**的含义，不要罗列词典里的所有义项。这是你和普通词典最大的区别，务必做到。
-- word 要还原成词典原形：动词还原时态与人称、名词还原单数、比较级还原原级。如果划选的是固定搭配或短语，就保留短语整体。
-- reading 用国际音标（IPA），不要带首尾斜杠。如果是日语则用假名，中文用拼音。无法确定时返回空字符串。
-- partOfSpeech 用简写，例如 n. / v. / adj. / adv. / prep. / phr.
-- contextTranslation 是整句话的完整翻译，不是只翻译划选的词。
-- definition 和 contextTranslation 都用${explainLanguage}书写。其余字段保持原语言。
-
-以 JSON 对象返回上述字段。`
-  // 末句的 "JSON" 是必需的：DeepSeek 等服务在 response_format 为 json_object 时，
-  // 会强制要求提示词里出现 json 字样，否则直接拒绝请求。
+请以 JSON 格式输出包含上述字段的对象。`
+  // 末句的 "JSON" 是必需的：部分服务在 response_format 为 json_object 时要求提示词中包含 json
 }
 
 export class AiError extends Error {

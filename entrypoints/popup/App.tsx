@@ -1,9 +1,10 @@
-import { Inbox } from 'lucide-react'
+import { Inbox, Settings2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { browser } from '#imports'
 import type { MtProvider } from '@/lib/machine-translate'
 import { MT_PROVIDER_LABELS } from '@/lib/machine-translate'
 import { sendMessage } from '@/lib/messaging'
+import type { DictMeta } from '@/lib/open-dict/types'
 import {
   activeAiProfile,
   getSettings,
@@ -24,6 +25,11 @@ export default function App() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
   const [anki, setAnki] = useState<Probe>({ kind: 'checking' })
+  const [dictMeta, setDictMeta] = useState<DictMeta>({
+    status: 'uninstalled',
+    entryCount: 0,
+    updatedAt: 0,
+  })
   const [saveError, setSaveError] = useState<string | null>(null)
   const [pending, setPending] = useState(0)
   const [flush, setFlush] = useState<Flush>({ kind: 'idle' })
@@ -38,6 +44,9 @@ export default function App() {
     void sendMessage({ type: 'check-anki' }).then(res =>
       setAnki(res.ok ? { kind: 'ok', version: res.data.version } : { kind: 'err' }),
     )
+    void sendMessage({ type: 'dict-status' }).then((res) => {
+      if (res.ok) setDictMeta(res.data)
+    })
     void sendMessage({ type: 'pending-count' }).then((res) => {
       if (res.ok) setPending(res.data.count)
     })
@@ -57,8 +66,7 @@ export default function App() {
     setFlush({
       kind: 'done',
       text: remaining > 0
-        // 还有剩说明写到一半 Anki 又断了，别报成"成功"
-        ? `写入 ${written} 张，还剩 ${remaining} 张没写进去，确认 Anki 在运行后再试。`
+        ? `写入 ${written} 张，还剩 ${remaining} 张，确认 Anki 在运行后再试。`
         : `写入 ${written} 张${dropped > 0 ? `，跳过 ${dropped} 张重复的` : ''}。`,
     })
   }
@@ -93,19 +101,36 @@ export default function App() {
   const aiReady = isAiConfigured(s)
   const active = activeAiProfile(s)
   const multiProfile = s.ai.profiles.length > 1
+  const dictReady = dictMeta.status === 'ready' && dictMeta.entryCount > 0
 
   return (
     <div className="pop">
       <div className="pop-brand">
-        <span className="pop-word">word·<em>catcher</em></span>
-        <span className="pop-pos">n.</span>
+        <div className="pop-brand-left">
+          <span className="pop-word">word·<em>catcher</em></span>
+          <span className="pop-reading">/wɜːd ˈkætʃə/</span>
+        </div>
+        <button
+          type="button"
+          className="pop-gear-btn"
+          title="打开设置"
+          onClick={() => void browser.runtime.openOptionsPage()}
+        >
+          <Settings2 size={16} />
+        </button>
       </div>
 
       <ul className="checks">
+        {/* ── 1. AI 语境释义 ── */}
         <li className={aiReady ? 'ok' : 'bad'}>
           <span className="dot" />
           <div className="check-body">
-            <strong>AI 接口</strong>
+            <div className="check-head-row">
+              <strong>AI 语境释义</strong>
+              <span className={`status-badge ${aiReady ? 'status-badge-ok' : 'status-badge-bad'}`}>
+                {aiReady ? '已配置' : '未就绪'}
+              </span>
+            </div>
             {multiProfile && (
               <div className="chips" role="radiogroup" aria-label="AI 配置">
                 {s.ai.profiles.map(p => (
@@ -126,15 +151,38 @@ export default function App() {
             <p>
               {aiReady
                 ? (multiProfile ? active.model : `${active.name} · ${active.model}`)
-                : '还没填 API key'}
+                : '尚未配置 API Key'}
             </p>
           </div>
         </li>
 
+        {/* ── 2. 离线词典 ── */}
+        <li className={dictReady ? 'ok' : 'wait'}>
+          <span className="dot" />
+          <div className="check-body">
+            <div className="check-head-row">
+              <strong>离线词典</strong>
+              <span className={`status-badge ${dictReady ? 'status-badge-ok' : 'status-badge-wait'}`}>
+                {dictReady ? '本地' : '未安装'}
+              </span>
+            </div>
+            <p>
+              {dictReady
+                ? `已就绪 (${dictMeta.entryCount.toLocaleString()} 词)`
+                : dictMeta.status === 'downloading'
+                  ? '正在下载安装...'
+                  : '未安装（可在设置中下载）'}
+            </p>
+          </div>
+        </li>
+
+        {/* ── 3. 快速翻译 ── */}
         <li className="ok">
           <span className="dot" />
           <div className="check-body">
-            <strong>快速翻译</strong>
+            <div className="check-head-row">
+              <strong>快速翻译</strong>
+            </div>
             <div className="chips" role="radiogroup" aria-label="翻译服务">
               {MT_PROVIDERS.map(p => (
                 <button
@@ -149,51 +197,55 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <p>连不上时自动切到另一家。</p>
+            <p>长句或未收录词自动平滑调用。</p>
           </div>
         </li>
 
+        {/* ── 4. Anki 单词本 ── */}
         <li className={anki.kind === 'ok' ? 'ok' : anki.kind === 'checking' ? 'wait' : 'bad'}>
           <span className="dot" />
           <div className="check-body">
-            <strong>Anki</strong>
+            <div className="check-head-row">
+              <strong>Anki 单词本</strong>
+              <span className={`status-badge ${anki.kind === 'ok' ? 'status-badge-ok' : 'status-badge-bad'}`}>
+                {anki.kind === 'ok' ? '已连接' : '未连接'}
+              </span>
+            </div>
             <p>
               {anki.kind === 'checking' && '检测中…'}
-              {anki.kind === 'ok' && `已连接 · 牌组「${s.anki.deckName}」`}
+              {anki.kind === 'ok' && `牌组「${s.anki.deckName}」`}
               {anki.kind === 'err' && '未连接，请打开 Anki 桌面版'}
             </p>
           </div>
         </li>
       </ul>
 
+      {/* ── 待写队列 ── */}
       {pending > 0 && (
         <div className="queue">
           <div className="queue-head">
             <Inbox size={14} />
-            <span>{pending} 张卡等着写入</span>
+            <span>{pending} 张卡片待写入 Anki</span>
           </div>
-          <p>Anki 没开的时候存的词都在这儿，开着 Anki 点一下就补写进去。</p>
+          <p>Anki 离线时保存的生词已暂存，启动 Anki 后点击补写：</p>
           <button
             className="btn btn-quiet"
             disabled={flush.kind === 'busy'}
             onClick={() => void onFlush()}
           >
-            {flush.kind === 'busy' ? '写入中…' : '现在补写'}
+            {flush.kind === 'busy' ? '写入中…' : '现在补写进 Anki'}
           </button>
         </div>
       )}
 
       {flush.kind === 'done' && <p className="queue-note">{flush.text}</p>}
-
       {saveError && <p className="pop-err">{saveError}</p>}
 
-      {!(aiReady && anki.kind === 'ok') && (
-        <p className="tip">快速翻译无需配置；AI 详解与存卡需要完成上述设置。</p>
-      )}
-
-      <button className="btn" onClick={() => void browser.runtime.openOptionsPage()}>
-        打开设置
-      </button>
+      <div className="pop-footer">
+        <button className="btn" onClick={() => void browser.runtime.openOptionsPage()}>
+          打开设置页面
+        </button>
+      </div>
     </div>
   )
 }

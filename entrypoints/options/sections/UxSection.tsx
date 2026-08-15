@@ -12,19 +12,22 @@ export function UxSection({ s, onChange }: SectionProps) {
   const currentLang = LANGUAGE_PRESETS.find(l => l.ttsLang === s.tts.lang)
 
   return (
-    <Section id="sec-ux" index={3} title="划词与朗读">
+    <Section id="sec-ux" index={4} title="划词与朗读">
       <div className="field">
         <span>触发方式</span>
         <Segmented
-          value={s.triggerMode}
+          value={s.triggerMode === 'auto' ? 'ai' : s.triggerMode}
           options={[
-            { value: 'icon', label: '先显示按钮' },
-            { value: 'auto', label: '直接 AI 详解' },
+            { value: 'icon', label: '先显示操作胶囊' },
+            { value: 'quick', label: '直接快速翻译' },
+            { value: 'ai', label: '直接 AI 释义' },
           ]}
           onChange={triggerMode => onChange({ ...s, triggerMode })}
         />
       </div>
-      <p className="hint">「直接 AI 详解」会跳过快译，每次划词都调用 AI。</p>
+      <p className="hint">
+        「先显示操作胶囊」按需点击；「直接快速翻译」划词即查离线词典/机翻（0 延迟零消耗）；「直接 AI 释义」每次划选均调用大模型。
+      </p>
 
       <label className="field">
         <span>学习语言</span>

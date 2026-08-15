@@ -1,8 +1,13 @@
 import { browser } from '#imports'
 import type { PartialEntry } from './ai'
-import type { QuickTranslation } from './machine-translate'
+import type { GoogleDictEntry, MtProvider, QuickTranslation } from './machine-translate'
+import type { DictMeta, QuickDictResult } from './open-dict/types'
 import type { FlushResult } from './pending'
 import type { CapturedCard, WordEntry } from './types'
+
+export type QuickLookupResult =
+  | { mode: 'dict', dict: QuickDictResult }
+  | ({ mode: 'mt' } & QuickTranslation)
 
 /**
  * 内容脚本 ↔ background 的消息协议。
@@ -13,6 +18,9 @@ import type { CapturedCard, WordEntry } from './types'
  */
 export type Request =
   | { type: 'quick-translate', payload: { text: string } }
+  | { type: 'dict-status' }
+  | { type: 'dict-clear' }
+  | { type: 'dict-lookup', payload: { word: string } }
   | { type: 'list-models' }
   | { type: 'test-ai' }
   | { type: 'save-card', payload: CapturedCard }
@@ -29,7 +37,10 @@ export type Request =
   | { type: 'open-options' }
 
 export type ResponseMap = {
-  'quick-translate': QuickTranslation
+  'quick-translate': QuickLookupResult
+  'dict-status': DictMeta
+  'dict-clear': null
+  'dict-lookup': QuickDictResult | null
   'list-models': { models: string[] }
   /**
    * sample 有值 = 整条链路都通，直接拿它渲染一张预览卡；

@@ -7,12 +7,14 @@ import { StatusChip } from './components/controls'
 import { AiSection } from './sections/AiSection'
 import { AnkiSection } from './sections/AnkiSection'
 import { DataSection } from './sections/DataSection'
+import { DictSection } from './sections/DictSection'
 import { MtSection } from './sections/MtSection'
 import { UxSection } from './sections/UxSection'
 
 const NAV_SECTIONS = [
   { id: 'sec-ai', label: 'AI 接口' },
   { id: 'sec-mt', label: '快速翻译' },
+  { id: 'sec-dict', label: '离线词典' },
   { id: 'sec-anki', label: 'Anki 单词本' },
   { id: 'sec-ux', label: '划词与朗读' },
   { id: 'sec-data', label: '数据与维护' },
@@ -95,7 +97,7 @@ export default function App() {
             <span className="brand-reading">/wɜːd ˈkætʃə(r)/</span>
             <span className="brand-pos">n.</span>
           </div>
-          <p className="brand-def">网页划词，快速翻译或 AI 语境详解，存入 Anki。</p>
+          <p className="brand-def">网页划词，离线词典/快译或 AI 语境释义，一键存入 Anki。</p>
         </div>
 
         <nav>
@@ -142,6 +144,7 @@ export default function App() {
       <main>
         <AiSection {...sectionProps} />
         <MtSection {...sectionProps} />
+        <DictSection {...sectionProps} />
         <AnkiSection {...sectionProps} onAliveChange={setAnkiAlive} />
         <UxSection {...sectionProps} />
         <DataSection {...sectionProps} />

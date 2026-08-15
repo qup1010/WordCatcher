@@ -22,6 +22,10 @@ export const wordEntrySchema = z.object({
   contextTranslation: z
     .string()
     .describe('整句原句的翻译'),
+  memoryHook: z
+    .string()
+    .optional()
+    .describe('趣味记忆线索或词根助记（可选）'),
 })
 
 export type WordEntry = z.infer<typeof wordEntrySchema>
@@ -67,6 +71,11 @@ export const settingsSchema = z.object({
   }),
   /** 释义和句子翻译用哪种语言书写 */
   explainLanguage: z.string().default('简体中文'),
+  /** 离线词库（Open Dictionary）配置 */
+  dict: z.object({
+    enabled: z.boolean().default(true),
+    downloadUrl: z.string().default('https://github.com/ahpxex/open-dictionary/releases/latest/download/distribution.jsonl.gz'),
+  }).default({}),
   anki: z.object({
     url: z.string().default('http://127.0.0.1:8765'),
     deckName: z.string().default('Word Catcher'),
@@ -86,14 +95,15 @@ export const settingsSchema = z.object({
   mt: z.object({
     provider: z.enum(['microsoft', 'google']).default('microsoft'),
   }),
-  /** auto = 划完词直接查；icon = 先显示一个小图标，点了才查（省 token） */
-  triggerMode: z.enum(['auto', 'icon']).default('icon'),
+  /** icon = 先显示胶囊按钮；quick = 划词直接快速翻译；ai/auto = 划词直接 AI 释义 */
+  triggerMode: z.enum(['icon', 'quick', 'ai', 'auto']).default('icon'),
 })
 
 export type Settings = z.infer<typeof settingsSchema>
 
 export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({
   ai: {},
+  dict: {},
   anki: {},
   tts: {},
   mt: {},

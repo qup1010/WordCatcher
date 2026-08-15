@@ -126,7 +126,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
       id="sec-ai"
       index={0}
       title="AI 接口"
-      intro="用于 AI 详解。兼容 OpenAI 接口的服务均可，点击标签切换配置。"
+      intro="结合具体句子语境理解生词、还原原形并翻译整句。支持任何兼容 OpenAI 格式的模型接口。"
     >
       <div className="profiles">
         {s.ai.profiles.map(p => (
@@ -258,13 +258,13 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
 
       <div className="row">
         <button className="btn" onClick={() => void onTest()} disabled={test.kind === 'busy'}>
-          {test.kind === 'busy' ? '正在生成示例词条…' : '测试 AI 并预览效果'}
+          {test.kind === 'busy' ? '正在生成示例释义…' : '测试连接并预览释义效果'}
         </button>
       </div>
 
       {test.kind === 'ok' && (
         <div className="result">
-          <p className="ok">配置可用。这是它对示例句的实际输出：</p>
+          <p className="ok">连接正常。以下是当前模型对示例句的实际输出效果：</p>
           <SamplePreview entry={test.sample} />
         </div>
       )}
@@ -272,7 +272,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
       {test.kind === 'no-structured' && (
         <div className="result">
           <p className="warn">
-            端点能连上，但这个模型吐不出结构化输出，AI 详解会一直报错。换个大一点的模型即可。
+            接口已连通，但当前模型无法返回结构化数据（JSON 格式），AI 语境释义将无法正常工作。建议更换能力更强或支持结构化输出的模型。
           </p>
           {test.reply && (
             <>

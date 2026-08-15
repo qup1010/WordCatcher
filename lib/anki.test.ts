@@ -78,7 +78,7 @@ describe('buildNoteFields', () => {
   it('产出 Anki 笔记类型定义的全部字段', () => {
     const fields = buildNoteFields(card(), settings())
     expect(Object.keys(fields).sort()).toEqual([
-      'Definition', 'PartOfSpeech', 'Reading', 'Sentence',
+      'Definition', 'MemoryHook', 'PartOfSpeech', 'Reading', 'Sentence',
       'SentencePlain', 'SentenceTranslation', 'Source', 'Word',
     ])
   })

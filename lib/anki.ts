@@ -16,6 +16,7 @@ export const ANKI_FIELDS = [
   'Reading',
   'PartOfSpeech',
   'Definition',
+  'MemoryHook',
   'Sentence',
   'SentencePlain',
   'SentenceTranslation',
@@ -145,6 +146,7 @@ function cardTemplates(ttsLang: string) {
 <div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">/{{Reading}}/</span>{{/Reading}}</div>
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
 <div class="wc-def">{{Definition}}</div>
+{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
 {{#SentencePlain}}<div class="wc-full">{{SentencePlain}}</div>{{/SentencePlain}}
 {{#SentenceTranslation}}<div class="wc-trans">{{SentenceTranslation}}</div>{{/SentenceTranslation}}
 {{#Source}}<div class="wc-source">{{Source}}</div>{{/Source}}
@@ -159,6 +161,7 @@ function cardTemplates(ttsLang: string) {
 {{FrontSide}}
 <hr id=answer>
 <div class="wc-def">{{Definition}}</div>
+{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
 `.trim(),
     },
@@ -172,6 +175,7 @@ function cardTemplates(ttsLang: string) {
 <hr id=answer>
 <div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">/{{Reading}}/</span>{{/Reading}}</div>
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
+{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
 `.trim(),
     },
     {
@@ -186,6 +190,7 @@ function cardTemplates(ttsLang: string) {
 <div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">/{{Reading}}/</span>{{/Reading}}</div>
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
 <div class="wc-def">{{Definition}}</div>
+{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
 `.trim(),
     },
   ]
@@ -193,14 +198,17 @@ function cardTemplates(ttsLang: string) {
 
 const MODEL_CSS = `
 .card {
-  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   font-size: 21px;
   text-align: left;
   color: #221f1a;
   background: #fdfcf9;
   padding: 28px 32px;
   line-height: 1.8;
-  max-width: 420px;
+  max-width: 460px;
+  margin: 0 auto;
+  border-radius: 12px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
 }
 
 .wc-sentence {
@@ -213,7 +221,9 @@ const MODEL_CSS = `
   color: #b45309;
   font-weight: 700;
   border-bottom: 2px solid #b45309;
-  padding: 0 3px;
+  padding: 0 4px;
+  background: rgba(180, 83, 9, 0.06);
+  border-radius: 2px;
 }
 
 .wc-pos {
@@ -254,20 +264,40 @@ const MODEL_CSS = `
   margin-top: 14px;
   font-size: 20px;
   color: #3f3f3f;
+  line-height: 1.6;
+}
+
+.wc-hook {
+  margin-top: 16px;
+  padding: 10px 14px 10px 12px;
+  background: #f6f2e9;
+  border-radius: 8px;
+  border-left: 3px solid #b45309;
+  font-size: 15px;
+  color: #635b4f;
+  line-height: 1.6;
+}
+
+.wc-hook-label {
+  font-weight: 600;
+  color: #92400e;
+  margin-right: 4px;
 }
 
 .wc-full {
   margin-top: 18px;
   padding-left: 14px;
-  border-left: 3px solid #e8e3d9;
+  border-left: 3px solid #0e6f63;
   color: #6d675d;
   font-size: 17px;
+  line-height: 1.7;
 }
 
 .wc-trans {
-  margin-top: 12px;
+  margin-top: 8px;
   font-size: 15px;
   color: #a39c8f;
+  line-height: 1.6;
 }
 
 .wc-source {
@@ -291,6 +321,7 @@ hr#answer {
 .night_mode .card {
   color: #ece7dd;
   background: #23211d;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
 }
 
 .nightMode .wc-word,
@@ -307,12 +338,25 @@ hr#answer {
 .night_mode .wc-blank {
   color: #e8a94e;
   border-bottom-color: #e8a94e;
+  background: rgba(232, 169, 78, 0.12);
+}
+
+.nightMode .wc-hook,
+.night_mode .wc-hook {
+  background: #2e2a24;
+  color: #cfc6b8;
+  border-left-color: #e8a94e;
+}
+
+.nightMode .wc-hook-label,
+.night_mode .wc-hook-label {
+  color: #e8a94e;
 }
 
 .nightMode .wc-full,
 .night_mode .wc-full {
   color: #a89f90;
-  border-left-color: #3a362e;
+  border-left-color: #4fd1bb;
 }
 
 .nightMode .wc-listen-hint,
@@ -349,6 +393,17 @@ export async function ensureDeckAndModel(s: Settings): Promise<void> {
       cardTemplates: cardTemplates(ttsLang),
     })
   } else {
+    // 检查字段是否存在，缺少 MemoryHook 则补充
+    try {
+      const existingFields = await invoke<string[]>(url, 'modelFieldNames', { modelName: noteTypeName })
+      for (const field of ANKI_FIELDS) {
+        if (!existingFields.includes(field)) {
+          await invoke(url, 'modelFieldSet', { modelName: noteTypeName, fields: [...existingFields, field] }).catch(() => {})
+        }
+      }
+    } catch {
+      // ignore
+    }
     // 老模型（单模板 / 坏 Listening 正面）在这里修到最新四模式
     await updateModelTemplates(s)
   }
@@ -417,6 +472,7 @@ export function buildNoteFields(card: CapturedCard, s: Settings): Record<string,
     Reading: escapeHtml(card.entry.reading),
     PartOfSpeech: escapeHtml(card.entry.partOfSpeech),
     Definition: escapeHtml(card.entry.definition),
+    MemoryHook: escapeHtml(card.entry.memoryHook || ''),
     Sentence: s.anki.clozeContext ? cloze : escapeHtml(card.sentence),
     SentencePlain: escapeHtml(card.sentence),
     SentenceTranslation: escapeHtml(card.entry.contextTranslation),
