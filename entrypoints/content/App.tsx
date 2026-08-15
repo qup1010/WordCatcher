@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronUp, Sparkles, Volume2, Zap } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, GripHorizontal, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PartialEntry } from '@/lib/ai'
 import { resolveOffset } from '@/lib/anki'
@@ -36,12 +36,51 @@ function Dots() {
  * 让用户先看到"结果会长这样"，体感比一个孤零零的进度指示快得多，
  * 内容到位时的布局跳动也小。
  */
-function Skeleton() {
+function Skeleton({ onStartDrag, pinned, onTogglePin, onClose }: {
+  onStartDrag?: (e: React.PointerEvent) => void
+  pinned?: boolean
+  onTogglePin?: () => void
+  onClose?: () => void
+}) {
   return (
     <div className="wc-sk" aria-hidden>
-      <div className="wc-sk-bar wc-sk-word" />
-      <div className="wc-sk-bar wc-sk-def" />
-      <div className="wc-sk-bar wc-sk-def-2" />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div className="wc-sk-bar wc-sk-word" style={{ margin: 0 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {onTogglePin && (
+            <button
+              type="button"
+              className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
+              title={pinned ? '取消固定（点击外部可关闭）' : '固定卡片（防止点击外部关闭）'}
+              onClick={onTogglePin}
+            >
+              <Pin size={13} />
+            </button>
+          )}
+          {onStartDrag && (
+            <button
+              type="button"
+              className="wc-head-btn wc-drag-handle"
+              title="按住拖拽移动卡片"
+              onPointerDown={onStartDrag}
+            >
+              <GripHorizontal size={14} />
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              className="wc-head-btn"
+              title="关闭 (Esc)"
+              onClick={onClose}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="wc-sk-def" style={{ marginTop: 6 }} />
+      <div className="wc-sk-def-2" />
       <div className="wc-sk-quote">
         <div className="wc-sk-bar" />
         <div className="wc-sk-bar wc-sk-short" />
@@ -57,27 +96,90 @@ interface EntryBodyProps {
   onSpeak: (text: string) => void
   /** 还在生成中：字段可能缺席，也不能试听半个词 */
   streaming?: boolean
+  pinned?: boolean
+  onTogglePin?: () => void
+  onStartDrag?: (e: React.PointerEvent) => void
+  onClose?: () => void
 }
 
 /**
  * 词条正文。流式和最终结果共用一套排版，
  * 这样字段陆续到齐时只是内容变多，不会整块重排。
  */
-function EntryBody({ entry, ctx, ttsReady, onSpeak, streaming }: EntryBodyProps) {
+function EntryBody({
+  entry,
+  ctx,
+  ttsReady,
+  onSpeak,
+  streaming,
+  pinned,
+  onTogglePin,
+  onStartDrag,
+  onClose,
+}: EntryBodyProps) {
   // word 是第一个到的字段，但在它到之前先用划选原文占位，避免面板从一片空白开始
   const word = entry.word || ctx.selection
 
   return (
     <>
       <div className="wc-head">
-        <span className="wc-word">{word}</span>
-        {entry.reading && <span className="wc-reading">/{entry.reading}/</span>}
-        {ttsReady && !streaming && (
-          <button className="wc-speak" title="试听读音" onClick={() => onSpeak(word)}>
-            <Volume2 size={16} />
-          </button>
-        )}
-        {entry.partOfSpeech && <span className="wc-pos">{entry.partOfSpeech}</span>}
+        <div className="wc-head-main" onPointerDown={onStartDrag}>
+          <span className="wc-word">{word}</span>
+          {entry.reading && <span className="wc-reading">/{entry.reading}/</span>}
+          {ttsReady && !streaming && (
+            <button
+              type="button"
+              className="wc-speak"
+              title="试听读音"
+              onClick={(e) => {
+                e.stopPropagation()
+                onSpeak(word)
+              }}
+            >
+              <Volume2 size={15} />
+            </button>
+          )}
+          {entry.partOfSpeech && <span className="wc-pos">{entry.partOfSpeech}</span>}
+        </div>
+
+        <div className="wc-head-actions">
+          {onTogglePin && (
+            <button
+              type="button"
+              className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
+              title={pinned ? '取消固定（点击外部可关闭）' : '固定卡片（防止点击外部关闭，划选新词时在当前位置更新）'}
+              onClick={(e) => {
+                e.stopPropagation()
+                onTogglePin()
+              }}
+            >
+              <Pin size={13} />
+            </button>
+          )}
+          {onStartDrag && (
+            <button
+              type="button"
+              className="wc-head-btn wc-drag-handle"
+              title="按住拖拽移动卡片"
+              onPointerDown={onStartDrag}
+            >
+              <GripHorizontal size={14} />
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              className="wc-head-btn"
+              title="关闭 (Esc)"
+              onClick={(e) => {
+                e.stopPropagation()
+                onClose()
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="wc-def">
@@ -191,6 +293,9 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const [save, setSave] = useState<SaveState>({ kind: 'idle' })
   const [anchor, setAnchor] = useState<Anchor | null>(null)
   const [dupe, setDupe] = useState<Dupe>('unknown')
+  const [pinned, setPinned] = useState(false)
+  const [fixedPos, setFixedPos] = useState<{ left: number, top: number } | null>(null)
+  const [dragOffset, setDragOffset] = useState<{ x: number, y: number }>({ x: 0, y: 0 })
   const panelRef = useRef<HTMLDivElement>(null)
   const [expandDict, setExpandDict] = useState(false)
   const [size, setSize] = useState({ width: PANEL_WIDTH, height: 0 })
@@ -212,7 +317,77 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     setDupe('unknown')
     setAnchor(null)
     setExpandDict(false)
+    setPinned(false)
+    setFixedPos(null)
+    setDragOffset({ x: 0, y: 0 })
   }, [])
+
+  const togglePin = useCallback(() => {
+    setPinned((prev) => {
+      const next = !prev
+      if (next) {
+        if (panelRef.current) {
+          const r = panelRef.current.getBoundingClientRect()
+          setFixedPos({ left: Math.round(r.left), top: Math.round(r.top) })
+          setDragOffset({ x: 0, y: 0 })
+        }
+      } else {
+        setFixedPos(null)
+      }
+      return next
+    })
+  }, [])
+
+  const onStartDrag = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+
+    const startX = e.clientX
+    const startY = e.clientY
+
+    if (fixedPos) {
+      const startLeft = fixedPos.left
+      const startTop = fixedPos.top
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        const dx = moveEvent.clientX - startX
+        const dy = moveEvent.clientY - startY
+        setFixedPos({
+          left: startLeft + dx,
+          top: startTop + dy,
+        })
+      }
+
+      const onPointerUp = () => {
+        window.removeEventListener('pointermove', onPointerMove)
+        window.removeEventListener('pointerup', onPointerUp)
+      }
+
+      window.addEventListener('pointermove', onPointerMove)
+      window.addEventListener('pointerup', onPointerUp)
+    } else {
+      const startOffsetX = dragOffset.x
+      const startOffsetY = dragOffset.y
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        const dx = moveEvent.clientX - startX
+        const dy = moveEvent.clientY - startY
+        setDragOffset({
+          x: startOffsetX + dx,
+          y: startOffsetY + dy,
+        })
+      }
+
+      const onPointerUp = () => {
+        window.removeEventListener('pointermove', onPointerMove)
+        window.removeEventListener('pointerup', onPointerUp)
+      }
+
+      window.addEventListener('pointermove', onPointerMove)
+      window.addEventListener('pointerup', onPointerUp)
+    }
+  }, [fixedPos, dragOffset])
 
   /**
    * 开一次 AI 详解。
@@ -276,17 +451,27 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         setSave({ kind: 'idle' })
         setExpandDict(false)
 
+        if (!pinned) {
+          setDragOffset({ x: 0, y: 0 })
+        }
+
         if (settings.triggerMode === 'auto' || settings.triggerMode === 'ai') {
           lookup(ctx)
         } else if (settings.triggerMode === 'quick') {
           void quickLookup(ctx)
         } else {
-          setPhase({ kind: 'trigger' })
+          // 如果已被 Pin 住，直接更新内容，不退回操作胶囊
+          if (pinned) {
+            void quickLookup(ctx)
+          } else {
+            setPhase({ kind: 'trigger' })
+          }
         }
       }, 0)
     }
 
     const onMouseDown = (e: MouseEvent) => {
+      if (pinned) return
       if (!insideUi(e.target)) dismiss()
     }
 
@@ -302,11 +487,11 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       document.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [shadowHost, settings.triggerMode, lookup, quickLookup, dismiss])
+  }, [shadowHost, settings.triggerMode, lookup, quickLookup, dismiss, pinned])
 
-  // 页面滚动时重新贴合选区，否则面板会飘在错误的位置
+  // 页面滚动时重新贴合选区（如果已被 Pin 固定则保持视口绝对位置不动）
   useEffect(() => {
-    if (phase.kind === 'hidden' || !anchor) return
+    if (phase.kind === 'hidden' || !anchor || (pinned && fixedPos)) return
 
     const reposition = () => {
       setAnchor(prev => (prev ? { ...prev, rect: prev.range.getBoundingClientRect() } : prev))
@@ -317,7 +502,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       window.removeEventListener('scroll', reposition, true)
       window.removeEventListener('resize', reposition)
     }
-  }, [phase.kind, anchor?.range])
+  }, [phase.kind, anchor?.range, pinned, fixedPos])
 
   // 出结果就顺手查一次重，让「存入单词本」在用户读完释义之前就变成「已收藏」
   const dupeWord = phase.kind === 'result'
@@ -450,12 +635,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     return (
       <div className="wc-root wc-layer" style={{ left: pos.left, top: pos.top }}>
         <div className="wc-pill">
-          <button title="快速查词/翻译" onClick={() => void quickLookup(anchor.ctx)}>
+          <button type="button" title="快速查词/翻译" onClick={() => void quickLookup(anchor.ctx)}>
             <Zap size={14} />
             <span>快译</span>
           </button>
           <div className="wc-pill-sep" />
-          <button title="结合语境进行 AI 释义" onClick={() => lookup(anchor.ctx)}>
+          <button type="button" title="结合语境进行 AI 释义" onClick={() => lookup(anchor.ctx)}>
             <Sparkles size={14} />
             <span>AI 释义</span>
           </button>
@@ -473,8 +658,14 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     const isDict = phase.kind === 'quick' && phase.mode === 'dict'
     const wordToSpeak = isDict ? phase.dict.headword : anchor.ctx.selection
 
+    const finalLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
+    const finalTop = fixedPos ? fixedPos.top : (pos.top + dragOffset.y)
+
     return (
-      <div className="wc-root wc-layer" style={{ left: pos.left, top: pos.top }}>
+      <div
+        className="wc-root wc-layer"
+        style={{ left: finalLeft, top: finalTop }}
+      >
         <div
           className={`wc-panel wc-panel-quick ${isLongText ? 'wc-panel-long' : ''}`}
           ref={panelRef}
@@ -484,42 +675,80 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         >
           <div className="wc-fade" key={phase.kind} aria-live="polite">
             <div className="wc-head">
-              {isLongText ? (
-                <span className="wc-head-title">译文</span>
-              ) : (
-                <span className="wc-word wc-word-sm">
-                  {isDict ? phase.dict.headword : anchor.ctx.selection}
-                </span>
-              )}
-              {!isLongText && isDict && phase.dict.reading && (
-                <span className="wc-reading" style={{ fontSize: 13 }}>
-                  /{phase.dict.reading}/
-                </span>
-              )}
-              {ttsReady && (
+              <div className="wc-head-main" onPointerDown={onStartDrag}>
+                {isLongText ? (
+                  <span className="wc-head-title">译文</span>
+                ) : (
+                  <span className="wc-word wc-word-sm">
+                    {isDict ? phase.dict.headword : anchor.ctx.selection}
+                  </span>
+                )}
+                {!isLongText && isDict && phase.dict.reading && (
+                  <span className="wc-reading">
+                    /{phase.dict.reading}/
+                  </span>
+                )}
+                {ttsReady && (
+                  <button
+                    type="button"
+                    className="wc-speak"
+                    title={isLongText ? '朗读原文' : '试听读音'}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      speakText(wordToSpeak)
+                    }}
+                  >
+                    <Volume2 size={15} />
+                  </button>
+                )}
+              </div>
+
+              <div className="wc-head-actions">
+                {phase.kind === 'quick' && (
+                  <span
+                    className={`wc-tag ${phase.mode === 'mt' && phase.fellBack ? 'wc-tag-alt' : ''}`}
+                    title={
+                      phase.mode === 'dict'
+                        ? '已从本地 Open Dictionary 离线词库检索'
+                        : phase.fellBack
+                          ? `首选服务连不上，已自动切换到${MT_PROVIDER_LABELS[phase.provider]}`
+                          : undefined
+                    }
+                  >
+                    {phase.mode === 'dict' ? '离线词典' : MT_PROVIDER_LABELS[phase.provider]}
+                  </span>
+                )}
                 <button
-                  className="wc-speak"
-                  title={isLongText ? '朗读原文' : '试听读音'}
-                  onClick={() => speakText(wordToSpeak)}
+                  type="button"
+                  className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
+                  title={pinned ? '取消固定（点击外部可关闭）' : '固定卡片（防止点击外部关闭，划选新词时在当前位置更新）'}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    togglePin()
+                  }}
                 >
-                  <Volume2 size={15} />
+                  <Pin size={13} />
                 </button>
-              )}
-              <div className="wc-spacer" />
-              {phase.kind === 'quick' && (
-                <span
-                  className={`wc-tag ${phase.mode === 'mt' && phase.fellBack ? 'wc-tag-alt' : ''}`}
-                  title={
-                    phase.mode === 'dict'
-                      ? '已从本地 Open Dictionary 离线词库检索'
-                      : phase.fellBack
-                        ? `首选服务连不上，已自动切换到${MT_PROVIDER_LABELS[phase.provider]}`
-                        : undefined
-                  }
+                <button
+                  type="button"
+                  className="wc-head-btn wc-drag-handle"
+                  title="按住拖拽移动卡片"
+                  onPointerDown={onStartDrag}
                 >
-                  {phase.mode === 'dict' ? '离线词典' : MT_PROVIDER_LABELS[phase.provider]}
-                </span>
-              )}
+                  <GripHorizontal size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="wc-head-btn"
+                  title="关闭 (Esc)"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    dismiss()
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
 
             {phase.kind === 'quick-loading' && (
@@ -561,6 +790,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 {phase.dict.allPosGroups.length > 0 && (
                   <div>
                     <button
+                      type="button"
                       className="wc-dict-toggle"
                       onClick={() => setExpandDict(!expandDict)}
                     >
@@ -617,6 +847,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             <div className="wc-actions wc-actions-tight">
               {phase.kind === 'quick-error' && (
                 <button
+                  type="button"
                   className="wc-btn wc-btn-ghost"
                   onClick={() => void quickLookup(anchor.ctx)}
                 >
@@ -624,6 +855,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 </button>
               )}
               <button
+                type="button"
                 className="wc-btn wc-btn-ghost wc-btn-accent"
                 title="结合语境进行 AI 释义"
                 onClick={() => lookup(anchor.ctx)}
@@ -633,6 +865,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               </button>
               {phase.kind === 'quick' && (
                 <button
+                  type="button"
                   className="wc-btn wc-btn-ghost"
                   disabled={saveDisabled}
                   title={dupe === 'yes' ? '这个词已经在牌组里了' : undefined}
@@ -642,7 +875,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 </button>
               )}
               <div className="wc-spacer" />
-              <button className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
+              <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
             </div>
 
             {save.kind === 'failed' && (
@@ -656,13 +889,15 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
   // ── AI 词条面板 ──────────────────────────────
   const pos = placeAt(anchor.rect, size.width || PANEL_WIDTH, size.height)
+  const finalLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
+  const finalTop = fixedPos ? fixedPos.top : (pos.top + dragOffset.y)
 
   return (
     <div
       className="wc-root wc-layer"
       style={{
-        left: pos.left,
-        top: pos.top,
+        left: finalLeft,
+        top: finalTop,
         // 高度是内容撑出来的，量到之前无法判断该往上翻还是往下放。
         // 先藏起来量一帧，否则用户会看见面板从下方跳到上方。
         visibility: size.height === 0 ? 'hidden' : undefined,
@@ -678,7 +913,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         <div className="wc-fade" key={phase.kind} aria-live="polite">
         {phase.kind === 'loading' && (
           <>
-            <Skeleton />
+            <Skeleton
+              onStartDrag={onStartDrag}
+              pinned={pinned}
+              onTogglePin={togglePin}
+              onClose={dismiss}
+            />
             <div className="wc-state wc-state-quiet">
               <Dots />
               <span>正在结合上下文解释「{anchor.ctx.selection}」</span>
@@ -690,17 +930,18 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
           <>
             <div className="wc-error">{phase.message}</div>
             <div className="wc-actions">
-              <button className="wc-btn wc-btn-primary" onClick={() => lookup(anchor.ctx)}>
+              <button type="button" className="wc-btn wc-btn-primary" onClick={() => lookup(anchor.ctx)}>
                 重试
               </button>
               <button
+                type="button"
                 className="wc-btn wc-btn-ghost"
                 onClick={() => void sendMessage({ type: 'open-options' })}
               >
                 打开设置
               </button>
               <div className="wc-spacer" />
-              <button className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
+              <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
             </div>
           </>
         )}
@@ -712,6 +953,10 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             ttsReady={ttsReady}
             onSpeak={speakText}
             streaming
+            pinned={pinned}
+            onTogglePin={togglePin}
+            onStartDrag={onStartDrag}
+            onClose={dismiss}
           />
         )}
 
@@ -722,10 +967,15 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               ctx={anchor.ctx}
               ttsReady={ttsReady}
               onSpeak={speakText}
+              pinned={pinned}
+              onTogglePin={togglePin}
+              onStartDrag={onStartDrag}
+              onClose={dismiss}
             />
 
             <div className="wc-actions">
               <button
+                type="button"
                 className="wc-btn wc-btn-primary"
                 onClick={() => void onSave()}
                 disabled={saveDisabled}
@@ -753,7 +1003,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               )}
 
               <div className="wc-spacer" />
-              <button className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
+              <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
             </div>
 
             {save.kind === 'failed' && (

@@ -1,7 +1,7 @@
-import { BookOpen, Check, Download, RefreshCw, Trash2, X } from 'lucide-react'
+import { BookOpen, Check, Download, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { sendMessage } from '@/lib/messaging'
-import { type ImportProgress, startDictImport } from '@/lib/open-dict/importer'
+import { type ImportProgress, importLocalDictFile, startDictImport } from '@/lib/open-dict/importer'
 import type { DictMeta } from '@/lib/open-dict/types'
 import { DEFAULT_SETTINGS } from '@/lib/types'
 import { Section } from '../components/Section'
@@ -17,6 +17,7 @@ export function DictSection({ s, onChange }: SectionProps) {
   const [progress, setProgress] = useState<ImportProgress | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const abortRef = useRef<(() => void) | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const downloadUrl = s.dict?.downloadUrl || DEFAULT_SETTINGS.dict.downloadUrl
 
@@ -66,17 +67,51 @@ export function DictSection({ s, onChange }: SectionProps) {
     abortRef.current = cancel
   }
 
+  const onSelectLocalFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setErrorMsg(null)
+    setProgress({
+      percent: 0,
+      processedCount: 0,
+      statusText: '准备解析本地文件...',
+    })
+
+    const controller = new AbortController()
+    abortRef.current = () => controller.abort()
+
+    void importLocalDictFile(file, {
+      onProgress: (p) => {
+        setProgress(p)
+      },
+      onDone: (count) => {
+        setProgress(null)
+        abortRef.current = null
+        refreshMeta()
+      },
+      onError: (msg) => {
+        setErrorMsg(msg)
+        setProgress(null)
+        abortRef.current = null
+        refreshMeta()
+      },
+      onAborted: () => {
+        setProgress(null)
+        abortRef.current = null
+        refreshMeta()
+      },
+    }, controller.signal)
+  }
+
   const onCancelDownload = () => {
     abortRef.current?.()
     abortRef.current = null
     setProgress(null)
   }
 
-  const onClear = async () => {
-    if (!confirm('确定要清空本地离线词库吗？清空后划词将回退到在线机器翻译。')) return
-    await sendMessage({ type: 'dict-clear' })
-    refreshMeta()
-  }
+  const [showConfirmClear, setShowConfirmClear] = useState(false)
 
   const isReady = meta.status === 'ready' && meta.entryCount > 0
   const isDownloading = progress !== null || meta.status === 'downloading'
@@ -108,7 +143,7 @@ export function DictSection({ s, onChange }: SectionProps) {
         </div>
       </div>
 
-      {/* ── 下载进度条 ── */}
+      {/* ── 下载/导入进度条 ── */}
       {isDownloading && progress && (
         <div style={{ marginTop: 12, padding: 14, background: 'var(--teal-wash)', borderRadius: 'var(--r-md)', border: '1px solid var(--hairline)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 550, color: 'var(--ink)' }}>
@@ -133,7 +168,7 @@ export function DictSection({ s, onChange }: SectionProps) {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
               <X size={13} />
-              <span>取消安装</span>
+              <span>取消操作</span>
             </button>
           </div>
         </div>
@@ -148,28 +183,77 @@ export function DictSection({ s, onChange }: SectionProps) {
 
       {/* ── 词库操作按钮 ── */}
       <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".jsonl.gz,.gz,.jsonl,.json"
+          hidden
+          onChange={onSelectLocalFile}
+        />
+
         {!isDownloading && (
-          <button
-            type="button"
-            className={`btn ${isReady ? 'btn-ghost' : 'btn-primary'}`}
-            onClick={onStartDownload}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
-            {isReady ? <RefreshCw size={14} /> : <Download size={14} />}
-            <span>{isReady ? '重新下载 / 更新词库' : '一键下载并安装词库 (约 93MB)'}</span>
-          </button>
+          <>
+            <button
+              type="button"
+              className={`btn ${isReady ? 'btn-ghost' : 'btn-primary'}`}
+              onClick={onStartDownload}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              {isReady ? <RefreshCw size={14} /> : <Download size={14} />}
+              <span>{isReady ? '从网络更新词库' : '一键从网络下载安装 (约 93MB)'}</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => fileInputRef.current?.click()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Upload size={14} />
+              <span>从本地文件导入 (.gz / .jsonl)</span>
+            </button>
+          </>
         )}
 
-        {isReady && !isDownloading && (
+        {isReady && !isDownloading && !showConfirmClear && (
           <button
             type="button"
             className="btn btn-ghost"
-            onClick={() => void onClear()}
+            onClick={() => setShowConfirmClear(true)}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--ink-faint)' }}
           >
             <Trash2 size={14} />
             <span>清空离线词库</span>
           </button>
+        )}
+
+        {showConfirmClear && (
+          <div className="dict-confirm-box" style={{ width: '100%' }}>
+            <span className="dict-confirm-msg">确定要清空本地离线词库吗？清空后划词将自动回退到在线机翻。</span>
+            <div className="dict-confirm-actions">
+              <button
+                type="button"
+                className="btn-danger-soft"
+                onClick={async () => {
+                  setShowConfirmClear(false)
+                  setMeta({ status: 'uninstalled', entryCount: 0, updatedAt: Date.now() })
+                  setProgress(null)
+                  setErrorMsg(null)
+                  await sendMessage({ type: 'dict-clear' })
+                  refreshMeta()
+                }}
+              >
+                确定清空
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowConfirmClear(false)}
+              >
+                取消
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

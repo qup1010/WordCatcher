@@ -36,11 +36,11 @@
 @keyframes wc-pop {
   from {
     opacity: 0;
-    transform: scale(0.94) translateY(5px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: translateY(0);
   }
 }
 
@@ -54,7 +54,9 @@
   border-radius: var(--r-md);
   box-shadow: var(--shadow-float);
   overflow: hidden;
-  animation: wc-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  animation: wc-pop 0.14s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .wc-pill button {
@@ -101,7 +103,9 @@
   box-shadow: var(--shadow-float);
   padding: 16px 18px 13px;
   box-sizing: border-box;
-  animation: wc-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  animation: wc-pop 0.14s cubic-bezier(0.16, 1, 0.3, 1);
 
   /* 宿主页面的默认滚动条在暖纸底上很扎眼，换成发丝色细条 */
   scrollbar-width: thin;
@@ -132,12 +136,12 @@
 
 /* 面板内容状态切换（loading → 结果 → 错误）的淡入 */
 @keyframes wc-fade-in {
-  from { opacity: 0; transform: translateY(3px); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .wc-fade {
-  animation: wc-fade-in 0.18s ease-out;
+  animation: wc-fade-in 0.14s ease-out;
 }
 
 /* ── 加载指示：三点呼吸 ─────────────────────────── */
@@ -343,26 +347,45 @@
 
 .wc-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
-/* 词头里的 .wc-spacer 要能把标签推到右端 */
-.wc-head .wc-spacer { min-width: 8px; }
+.wc-head-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.wc-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
 
 .wc-word {
   font-family: var(--font-serif);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--ink);
   word-break: break-word;
+  line-height: 1.25;
+}
+
+.wc-word-sm {
+  font-size: 18px;
 }
 
 .wc-reading {
   font-family: var(--font-serif);
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--ink-faint);
 }
 
@@ -378,7 +401,7 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  padding: 4px;
+  padding: 3px;
   border-radius: var(--r-sm);
   line-height: 0;
   display: inline-flex;
@@ -391,9 +414,60 @@
   background: var(--teal-wash);
 }
 
+/* ── 顶部操作栏小按钮（Pin / 拖拽 / 关闭） ──────── */
+
+.wc-head-btn {
+  align-self: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: var(--r-sm);
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-faint);
+  transition: color 0.12s ease, background 0.12s ease, transform 0.12s ease, opacity 0.15s ease;
+}
+
+.wc-head-btn:hover {
+  color: var(--ink);
+  background: var(--sunken);
+}
+
+.wc-head-btn.wc-pinned {
+  color: var(--teal);
+  background: var(--teal-wash);
+  transform: rotate(-45deg);
+}
+
+.wc-drag-handle {
+  cursor: grab;
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wc-panel:hover .wc-drag-handle {
+  opacity: 0.65;
+  pointer-events: auto;
+}
+
+.wc-panel:hover .wc-drag-handle:hover {
+  opacity: 1;
+  color: var(--ink);
+  background: var(--sunken);
+}
+
+.wc-drag-handle:active {
+  cursor: grabbing;
+  opacity: 1;
+}
+
 .wc-head-title {
   font-family: var(--font-sans);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--teal);
   letter-spacing: 0.02em;

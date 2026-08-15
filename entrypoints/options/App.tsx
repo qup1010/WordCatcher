@@ -4,6 +4,7 @@ import { sendMessage } from '@/lib/messaging'
 import { getSettings, isAiConfigured, saveSettings } from '@/lib/settings'
 import { DEFAULT_SETTINGS, type Settings } from '@/lib/types'
 import { StatusChip } from './components/controls'
+import { AboutSection } from './sections/AboutSection'
 import { AiSection } from './sections/AiSection'
 import { AnkiSection } from './sections/AnkiSection'
 import { DataSection } from './sections/DataSection'
@@ -18,6 +19,7 @@ const NAV_SECTIONS = [
   { id: 'sec-anki', label: 'Anki 单词本' },
   { id: 'sec-ux', label: '划词与朗读' },
   { id: 'sec-data', label: '数据与维护' },
+  { id: 'sec-about', label: '关于插件' },
 ] as const
 
 /**
@@ -148,6 +150,7 @@ export default function App() {
         <AnkiSection {...sectionProps} onAliveChange={setAnkiAlive} />
         <UxSection {...sectionProps} />
         <DataSection {...sectionProps} />
+        <AboutSection {...sectionProps} />
 
         <p className="foot-note">设置修改后自动保存并立即生效。</p>
       </main>

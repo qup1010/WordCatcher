@@ -89,6 +89,135 @@ export function startDictImport(downloadUrl: string, handlers: ImportHandlers): 
 }
 
 /**
+ * 客户端（设置页）调用：直接导入用户本地下载的词库文件（支持 .jsonl.gz, .gz 或解压后的 .jsonl）
+ */
+export async function importLocalDictFile(
+  file: File,
+  handlers: ImportHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const isGzip = file.name.endsWith('.gz') || file.type.includes('gzip')
+
+  handlers.onProgress({
+    percent: 5,
+    processedCount: 0,
+    statusText: isGzip ? '正在读取并解压本地词库文件...' : '正在读取本地词库文件...',
+  })
+
+  await saveDictMeta({
+    status: 'downloading',
+    entryCount: 0,
+    updatedAt: Date.now(),
+  })
+
+  await openDictDb()
+
+  let stream = file.stream()
+  if (isGzip) {
+    if (typeof DecompressionStream !== 'undefined') {
+      stream = stream.pipeThrough(new DecompressionStream('gzip'))
+    } else {
+      throw new Error('当前浏览器环境不支持 DecompressionStream 解压 gzip 文件')
+    }
+  }
+
+  const reader = stream.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ''
+  let count = 0
+  let batch: OpenDictEntry[] = []
+  const BATCH_SIZE = 2000
+  const ESTIMATED_TOTAL = 84500
+
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        throw new Error('用户取消导入')
+      }
+
+      const { value, done } = await reader.read()
+      if (done) break
+
+      buffer += value
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+
+        try {
+          const entry = JSON.parse(trimmed) as OpenDictEntry
+          if (entry.headword) {
+            batch.push(entry)
+            count++
+          }
+        } catch {
+          // 忽略非法行
+        }
+
+        if (batch.length >= BATCH_SIZE) {
+          await saveBatchEntries(batch)
+          batch = []
+
+          const progress = Math.min(98, Math.round(10 + (count / ESTIMATED_TOTAL) * 88))
+          handlers.onProgress({
+            percent: progress,
+            processedCount: count,
+            statusText: `正在导入本地词条: 已写入 ${count.toLocaleString()} 条...`,
+          })
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      try {
+        const entry = JSON.parse(buffer.trim()) as OpenDictEntry
+        if (entry.headword) {
+          batch.push(entry)
+          count++
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (batch.length > 0) {
+      await saveBatchEntries(batch)
+    }
+
+    if (count === 0) {
+      throw new Error('文件中未解析到有效的词条数据，请确认是否为正确的 Open Dictionary 数据包')
+    }
+
+    await saveDictMeta({
+      status: 'ready',
+      entryCount: count,
+      updatedAt: Date.now(),
+    })
+
+    handlers.onDone(count)
+  } catch (err: any) {
+    if (signal?.aborted) {
+      await saveDictMeta({
+        status: 'uninstalled',
+        entryCount: 0,
+        updatedAt: Date.now(),
+      })
+      handlers.onAborted?.()
+    } else {
+      const msg = err?.message || String(err)
+      await saveDictMeta({
+        status: 'error',
+        entryCount: 0,
+        updatedAt: Date.now(),
+        errorMessage: msg,
+      })
+      handlers.onError(msg)
+    }
+  }
+}
+
+/**
  * Background Service Worker 执行端：
  * 拥有 host_permissions，无跨域限制，支持 302 重定向流式下载、解压并写入 IndexedDB
  */

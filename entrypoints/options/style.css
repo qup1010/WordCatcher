@@ -1029,3 +1029,48 @@ select:focus-visible {
 .help-tip-links a:hover {
   text-decoration: underline;
 }
+
+/* ── 离线词库清空确认卡片 ────────────────────────── */
+
+.dict-confirm-box {
+  margin-top: 12px;
+  padding: 11px 14px;
+  background: var(--danger-wash);
+  border: 1px solid rgba(197, 48, 48, 0.25);
+  border-radius: var(--r-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.dict-confirm-msg {
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.dict-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-danger-soft {
+  background: var(--danger);
+  color: #ffffff;
+  border: none;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.12s ease;
+}
+
+.btn-danger-soft:hover {
+  opacity: 0.9;
+}
