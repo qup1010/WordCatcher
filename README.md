@@ -42,32 +42,37 @@ Word Catcher 围绕这两个场景提供了灵活的查词模式与 Anki 一键�
 
 ## 🚀 快速开始
 
-### 步骤 1：准备 Anki
-1. 启动 [Anki 桌面版](https://apps.ankiweb.net/)；
-2. 安装 AnkiConnect 插件：点击菜单栏「工具」→「附加组件」→「获取附加组件」→ 输入代码 **`2055492159`** 安装并重启 Anki。
+### 步骤 1：安装浏览器扩展
 
-### 步骤 2：安装扩展
-
-#### 方式 A：直接下载安装包
-1. 在 GitHub 页面右侧 **[Releases](https://github.com/)** 下载最新的 `word-catcher-chrome.zip`（Firefox 用户下载 `word-catcher-firefox.zip`）；
+#### 方式 A：直接下载安装包（推荐）
+1. 在 GitHub 页面右侧 **[Releases](https://github.com/qup1010/WordCatcher/releases)** 下载最新的 `word-catcher-0.1.0-chrome.zip`（Firefox 用户下载 `word-catcher-0.1.0-firefox.zip`）；
 2. 解压到本地任意目录；
-3. 打开 Chrome / Edge 扩展管理页面（`chrome://extensions`），开启「**开发者模式**」；
-4. 点击「**加载已解压的扩展程序**」，选择解压后的目录即可。
+3. 打开 Chrome / Edge 扩展管理页面（`chrome://extensions` 或 `edge://extensions`），开启「**开发者模式**」；
+4. 点击「**加载已解压的扩展程序**」，选择解压后的目录即可完成安装。
 
 #### 方式 B：从源码编译
 ```bash
-git clone <本仓库地址>
-cd word-catcher
+git clone https://github.com/qup1010/WordCatcher.git
+cd WordCatcher
 pnpm install
 pnpm build
 ```
 在浏览器扩展页面加载 `.output/chrome-mv3` 目录。
 
-### 步骤 3：基础配置
-初次使用打开扩展设置页：
-* 如需使用 AI 语境释义：填入 API Key 和模型名称；
-* 如需本地词库：在「离线词典」分区点击下载开源词库包；
-* 点击「测试连接并同步卡片模板」确认 Anki 连接正常。
+---
+
+### 步骤 2：基础配置（按需开启）
+安装完成后无需任何配置即可直接在网页中划词使用**即时机翻**。若需更多进阶能力，可右键扩展图标打开「选项」：
+* **AI 语境释义（可选）**：在「AI 接口」分区填入 API Key 和模型名（支持 DeepSeek、OpenAI、Kimi、Ollama 等）；
+* **本地离线词库（可选）**：在「离线词典」分区点击「下载并安装词库」，开启本地查词与记忆线索。
+
+---
+
+### 步骤 3：连接 Anki 单词本（可选）
+如果需要将生词一键同步到 Anki 进行多角度复习：
+1. 启动 [Anki 桌面版](https://apps.ankiweb.net/) 并保持在后台运行；
+2. 安装 AnkiConnect 插件：菜单栏点击「工具」→「附加组件」→「获取附加组件」→ 输入代码 **`2055492159`** 安装并重启 Anki；
+3. 在扩展设置页点击「测试连接并同步卡片模板」，确认连接正常即可开始一键存卡。
 
 ---
 
