@@ -121,7 +121,7 @@ export function DictSection({ s, onChange }: SectionProps) {
       id="sec-dict"
       index={2}
       title="离线词典"
-      intro={<>基于开源 Open Dictionary（8.4 万词条），在本地 IndexedDB 提供毫秒级离线快速查词与记忆线索。</>}
+      intro={<>基于开源 Open Dictionary，在本地 IndexedDB 提供线快速查词。</>}
     >
       <div className="field">
         <span>启用离线词库</span>
