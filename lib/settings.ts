@@ -61,6 +61,7 @@ export function normalizeSettings(raw: unknown): Settings {
     mt: section('mt'),
     explainLanguage: r.explainLanguage ?? DEFAULT_SETTINGS.explainLanguage,
     triggerMode: r.triggerMode ?? DEFAULT_SETTINGS.triggerMode,
+    doubleClickLookup: r.doubleClickLookup ?? DEFAULT_SETTINGS.doubleClickLookup,
   }
 
   const parsed = settingsSchema.safeParse(merged)

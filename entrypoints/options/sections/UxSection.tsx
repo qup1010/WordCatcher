@@ -29,6 +29,22 @@ export function UxSection({ s, onChange }: SectionProps) {
         「先显示操作胶囊」按需点击；「直接快速翻译」划词即查离线词典/机翻（0 延迟零消耗）；「直接 AI 释义」每次划选均调用大模型。
       </p>
 
+      <div className="field">
+        <span>双击查词</span>
+        <div className="field-inline">
+          <Switch
+            checked={s.doubleClickLookup}
+            onChange={doubleClickLookup => onChange({ ...s, doubleClickLookup })}
+          />
+          <span className="field-inline-label">
+            双击单词直接展开快速翻译
+          </span>
+        </div>
+      </div>
+      <p className="hint">
+        开启后，双击网页中的单词跳过操作胶囊，直接展开离线词典或在线机翻。
+      </p>
+
       <label className="field">
         <span>学习语言</span>
         <select

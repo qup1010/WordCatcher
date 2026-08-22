@@ -436,6 +436,8 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     const onMouseUp = (e: MouseEvent) => {
       if (insideUi(e.target)) return
 
+      const isDoubleClick = e.detail === 2
+
       // 交给浏览器先把选区结算完，否则拿到的还是上一次的
       setTimeout(() => {
         const sel = window.getSelection()
@@ -453,6 +455,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
         if (!pinned) {
           setDragOffset({ x: 0, y: 0 })
+        }
+
+        // 双击单词时：若开启了双击查词，跳过操作胶囊直接展开快速翻译
+        if (settings.doubleClickLookup && isDoubleClick) {
+          void quickLookup(ctx)
+          return
         }
 
         if (settings.triggerMode === 'auto' || settings.triggerMode === 'ai') {
@@ -487,7 +495,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       document.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [shadowHost, settings.triggerMode, lookup, quickLookup, dismiss, pinned])
+  }, [shadowHost, settings.triggerMode, settings.doubleClickLookup, lookup, quickLookup, dismiss, pinned])
 
   // 页面滚动时重新贴合选区（如果已被 Pin 固定则保持视口绝对位置不动）
   useEffect(() => {

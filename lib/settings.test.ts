@@ -78,6 +78,12 @@ describe('normalizeSettings', () => {
 
   it('字段类型不对时退回默认，不让坏数据传播下去', () => {
     expect(normalizeSettings({ triggerMode: 'nonsense' })).toEqual(DEFAULT_SETTINGS)
+    expect(normalizeSettings({ doubleClickLookup: 'invalid' as unknown as boolean }).doubleClickLookup).toBe(false)
+  })
+
+  it('doubleClickLookup 配置可正常保存与合并', () => {
+    expect(normalizeSettings({}).doubleClickLookup).toBe(false)
+    expect(normalizeSettings({ doubleClickLookup: true }).doubleClickLookup).toBe(true)
   })
 })
 

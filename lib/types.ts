@@ -97,6 +97,8 @@ export const settingsSchema = z.object({
   }),
   /** icon = 先显示胶囊按钮；quick = 划词直接快速翻译；ai/auto = 划词直接 AI 释义 */
   triggerMode: z.enum(['icon', 'quick', 'ai', 'auto']).default('icon'),
+  /** 双击网页单词时是否直接展开快速翻译（默认关闭） */
+  doubleClickLookup: z.boolean().default(false),
 })
 
 export type Settings = z.infer<typeof settingsSchema>
