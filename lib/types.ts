@@ -63,6 +63,20 @@ export const DEFAULT_AI_PROFILE: AiProfile = {
   model: 'gpt-4o-mini',
 }
 
+/** 查词历史条目 */
+export interface HistoryItem {
+  id: string
+  word: string
+  reading?: string
+  definition: string
+  sentence?: string
+  pageTitle?: string
+  pageUrl?: string
+  timestamp: number
+  savedToAnki?: boolean
+  source: 'dict' | 'mt' | 'ai'
+}
+
 export const settingsSchema = z.object({
   /** 支持多套端点配置，activeId 指向当前使用的一套 */
   ai: z.object({
@@ -75,7 +89,10 @@ export const settingsSchema = z.object({
   dict: z.object({
     enabled: z.boolean().default(true),
     downloadUrl: z.string().default('https://github.com/ahpxex/open-dictionary/releases/latest/download/distribution.jsonl.gz'),
-  }).default({}),
+  }).default({
+    enabled: true,
+    downloadUrl: 'https://github.com/ahpxex/open-dictionary/releases/latest/download/distribution.jsonl.gz',
+  }),
   anki: z.object({
     url: z.string().default('http://127.0.0.1:8765'),
     deckName: z.string().default('Word Catcher'),
@@ -90,6 +107,8 @@ export const settingsSchema = z.object({
     /** 插件内试听用的语音语言 */
     lang: z.string().default('en-US'),
     rate: z.number().default(0.9),
+    /** 是否智能检测划选文本语种以匹配发音 */
+    autoDetect: z.boolean().default(true),
   }),
   /** 快速翻译（机器翻译，免费免配置）。默认微软：谷歌被墙的网络下也能用 */
   mt: z.object({
@@ -99,6 +118,10 @@ export const settingsSchema = z.object({
   triggerMode: z.enum(['icon', 'quick', 'ai', 'auto']).default('icon'),
   /** 双击网页单词时是否直接展开快速翻译（默认关闭） */
   doubleClickLookup: z.boolean().default(false),
+  /** 划词触发的修饰键过滤：none = 常规划词触发；alt/ctrl/shift = 需按住对应键划词 */
+  modifierKey: z.enum(['none', 'alt', 'ctrl', 'shift', 'meta']).default('none'),
+  /** 禁用划词的域名列表（如 github.com, docs.google.com） */
+  blacklist: z.array(z.string()).default([]),
 })
 
 export type Settings = z.infer<typeof settingsSchema>

@@ -92,8 +92,38 @@
 
 /* ── 卡片本体 ──────────────────────────────────── */
 
+.wc-drag-bar {
+  width: 36px;
+  height: 4px;
+  margin: -6px auto 8px auto;
+  background: var(--hairline);
+  border-radius: var(--r-pill);
+  cursor: grab;
+  touch-action: none;
+  transition: opacity 0.15s ease, background 0.15s ease, transform 0.12s ease;
+  user-select: none;
+}
+
+.wc-panel:hover .wc-drag-bar {
+  background: var(--ink-faint);
+  opacity: 0.6;
+}
+
+.wc-drag-bar:hover {
+  background: var(--teal) !important;
+  opacity: 1 !important;
+  transform: scaleY(1.3);
+}
+
+.wc-dragging,
+.wc-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 .wc-panel {
   width: 390px;
+  position: relative;
   /* max-height 由 place() 按视口剩余空间算好后从行内传进来，这里只是兜底 */
   max-height: 480px;
   overflow-y: auto;
@@ -101,7 +131,7 @@
   background: var(--card);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-float);
-  padding: 16px 18px 13px;
+  padding: 14px 18px 13px;
   box-sizing: border-box;
   will-change: transform, opacity;
   backface-visibility: hidden;
@@ -110,6 +140,23 @@
   /* 宿主页面的默认滚动条在暖纸底上很扎眼，换成发丝色细条 */
   scrollbar-width: thin;
   scrollbar-color: var(--hairline) transparent;
+}
+
+.wc-toast-hint {
+  position: absolute;
+  top: 40px;
+  right: 14px;
+  max-width: 220px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  line-height: 1.45;
+  box-shadow: var(--shadow-pop);
+  z-index: 50;
+  animation: wc-pop 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
 }
 
 .wc-panel::-webkit-scrollbar { width: 8px; }
@@ -126,7 +173,7 @@
 
 .wc-panel-quick {
   width: 320px;
-  padding: 13px 15px 11px;
+  padding: 12px 15px 11px;
 }
 
 .wc-panel-quick.wc-panel-long {
@@ -228,26 +275,72 @@
 /* ── 记忆线索卡片 (Memory Hook) ───────────────────── */
 
 .wc-hook-card {
-  margin-top: 10px;
-  padding: 8px 12px 8px 11px;
-  background: var(--teal-wash);
-  border-radius: var(--r-md);
-  border: 1px solid var(--hairline);
-  border-left: 3px solid var(--teal);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  margin-top: 11px;
+  padding: 10px 13px 11px;
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.45) 0%, rgba(253, 230, 138, 0.16) 100%), var(--card);
+  border-radius: 10px;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  box-shadow: 0 1px 4px rgba(180, 83, 9, 0.04), 0 4px 12px rgba(180, 83, 9, 0.03);
   font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--ink-soft);
+  line-height: 1.68;
+  color: var(--ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.wc-hook-card-title {
-  font-size: 11.5px;
-  font-weight: 650;
-  color: var(--teal);
-  margin-bottom: 3px;
+.wc-hook-card:hover {
+  border-color: rgba(217, 119, 6, 0.35);
+  box-shadow: 0 2px 6px rgba(180, 83, 9, 0.06), 0 6px 16px rgba(180, 83, 9, 0.05);
+}
+
+.wc-hook-card-header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.wc-hook-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(217, 119, 6, 0.11);
+  color: var(--amber);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.wc-hook-badge svg {
+  color: var(--amber);
+  filter: drop-shadow(0 1px 2px rgba(217, 119, 6, 0.2));
+}
+
+.wc-hook-body {
+  font-size: 12.5px;
+  line-height: 1.68;
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+@media (prefers-color-scheme: dark) {
+  .wc-hook-card {
+    background: linear-gradient(135deg, rgba(232, 169, 78, 0.08) 0%, rgba(232, 169, 78, 0.02) 100%), var(--card);
+    border: 1px solid rgba(232, 169, 78, 0.22);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  }
+
+  .wc-hook-card:hover {
+    border-color: rgba(232, 169, 78, 0.38);
+  }
+
+  .wc-hook-badge {
+    background: rgba(232, 169, 78, 0.14);
+    color: var(--amber);
+  }
 }
 
 /* ── 离线词典专用展示 ───────────────────────────────── */
@@ -350,6 +443,9 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
 }
 
 .wc-head-main {
@@ -359,6 +455,7 @@
   flex-wrap: wrap;
   flex: 1;
   min-width: 0;
+  cursor: grab;
 }
 
 .wc-head-actions {
@@ -367,6 +464,7 @@
   gap: 2px;
   flex-shrink: 0;
   margin-top: 1px;
+  cursor: default;
 }
 
 .wc-word {
@@ -722,6 +820,60 @@
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
+}
+
+.wc-root .wc-error .wc-link:hover {
+  text-decoration: underline;
+}
+
+/* ── 内联释义微调与快捷键 ── */
+.wc-def-edit-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 6px;
+}
+
+.wc-def-textarea {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--sunken, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--teal, #0d9488);
+  border-radius: var(--r-sm, 6px);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  box-shadow: 0 0 0 2px var(--teal-wash, rgba(13, 148, 136, 0.12));
+}
+
+.wc-def-editable {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.12s ease;
+  position: relative;
+}
+
+.wc-def-editable:hover {
+  background: rgba(13, 148, 136, 0.06);
+}
+
+.wc-head-btn.wc-copied {
+  color: #3fb950 !important;
+}
+
+.wc-kbd {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  opacity: 0.75;
+  font-weight: 500;
 }
 
 /* ── 键盘可达性 ────────────────────────────────── */

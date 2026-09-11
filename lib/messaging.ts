@@ -3,7 +3,7 @@ import type { PartialEntry } from './ai'
 import type { GoogleDictEntry, MtProvider, QuickTranslation } from './machine-translate'
 import type { DictMeta, QuickDictResult } from './open-dict/types'
 import type { FlushResult } from './pending'
-import type { CapturedCard, WordEntry } from './types'
+import type { CapturedCard, HistoryItem, WordEntry } from './types'
 
 export type QuickLookupResult =
   | { mode: 'dict', dict: QuickDictResult }
@@ -17,7 +17,7 @@ export type QuickLookupResult =
  * 暴露在页面上下文里。
  */
 export type Request =
-  | { type: 'quick-translate', payload: { text: string } }
+  | { type: 'quick-translate', payload: { text: string, context?: { sentence?: string, pageTitle?: string, pageUrl?: string } } }
   | { type: 'dict-status' }
   | { type: 'dict-clear' }
   | { type: 'dict-lookup', payload: { word: string } }
@@ -35,6 +35,10 @@ export type Request =
   | { type: 'check-anki' }
   | { type: 'sync-anki-templates' }
   | { type: 'open-options' }
+  | { type: 'history-list' }
+  | { type: 'history-remove', payload: { id: string } }
+  | { type: 'history-clear' }
+  | { type: 'open-sidepanel' }
 
 export type ResponseMap = {
   'quick-translate': QuickLookupResult
@@ -65,6 +69,10 @@ export type ResponseMap = {
   'check-anki': { version: number }
   'sync-anki-templates': null
   'open-options': null
+  'history-list': HistoryItem[]
+  'history-remove': HistoryItem[]
+  'history-clear': null
+  'open-sidepanel': null
 }
 
 export type Result<T> = { ok: true, data: T } | { ok: false, error: string }

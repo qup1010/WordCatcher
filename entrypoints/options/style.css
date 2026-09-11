@@ -315,7 +315,8 @@ section a {
 }
 
 .field input:not([type="range"]),
-.field select {
+.field select,
+.field textarea {
   flex: 1;
   min-width: 0;
   padding: 8px 12px;
@@ -329,9 +330,17 @@ section a {
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
-.field input:hover, .field select:hover { border-color: var(--ink-faint); }
+.field textarea {
+  resize: vertical;
+  min-height: 68px;
+  line-height: 1.5;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
 
-.field input:focus, .field select:focus {
+.field input:hover, .field select:hover, .field textarea:hover { border-color: var(--ink-faint); }
+
+.field input:focus, .field select:focus, .field textarea:focus {
   outline: none;
   border-color: var(--teal);
   box-shadow: 0 0 0 3px var(--teal-wash);

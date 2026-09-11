@@ -1,4 +1,5 @@
-import { Check, ChevronDown, ChevronUp, GripHorizontal, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, GripHorizontal, Lightbulb, PanelRight, Pencil, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
+import { browser } from '#imports'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PartialEntry } from '@/lib/ai'
 import { resolveOffset } from '@/lib/anki'
@@ -18,6 +19,29 @@ const QUICK_LONG_WIDTH = 440
 const PILL_WIDTH = 152
 const PILL_HEIGHT = 34
 
+/** 复制按钮组件 */
+function CopyBtn({ text, title = '复制词条' }: { text: string, title?: string }) {
+  const [copied, setCopied] = useState(false)
+  const onCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    })
+  }
+
+  return (
+    <button
+      type="button"
+      className={`wc-head-btn ${copied ? 'wc-copied' : ''}`}
+      title={copied ? '已复制到剪贴板！' : title}
+      onClick={onCopy}
+    >
+      {copied ? <Check size={13} style={{ color: '#3fb950' }} /> : <Copy size={13} />}
+    </button>
+  )
+}
+
 /** 三点呼吸加载指示 */
 function Dots() {
   return (
@@ -36,17 +60,35 @@ function Dots() {
  * 让用户先看到"结果会长这样"，体感比一个孤零零的进度指示快得多，
  * 内容到位时的布局跳动也小。
  */
-function Skeleton({ onStartDrag, pinned, onTogglePin, onClose }: {
+function Skeleton({ onStartDrag, pinned, onTogglePin, onClose, onOpenSidePanel }: {
   onStartDrag?: (e: React.PointerEvent) => void
   pinned?: boolean
   onTogglePin?: () => void
   onClose?: () => void
+  onOpenSidePanel?: () => void
 }) {
   return (
     <div className="wc-sk" aria-hidden>
+      {onStartDrag && (
+        <div
+          className="wc-drag-bar"
+          title="按住拖拽移动卡片"
+          onPointerDown={onStartDrag}
+        />
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div className="wc-sk-bar wc-sk-word" style={{ margin: 0 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {onOpenSidePanel && (
+            <button
+              type="button"
+              className="wc-head-btn"
+              title="在浏览器侧边栏中打开"
+              onClick={onOpenSidePanel}
+            >
+              <PanelRight size={13} />
+            </button>
+          )}
           {onTogglePin && (
             <button
               type="button"
@@ -100,6 +142,8 @@ interface EntryBodyProps {
   onTogglePin?: () => void
   onStartDrag?: (e: React.PointerEvent) => void
   onClose?: () => void
+  onOpenSidePanel?: () => void
+  onEditDefinition?: (def: string) => void
 }
 
 /**
@@ -116,13 +160,42 @@ function EntryBody({
   onTogglePin,
   onStartDrag,
   onClose,
+  onOpenSidePanel,
+  onEditDefinition,
 }: EntryBodyProps) {
   // word 是第一个到的字段，但在它到之前先用划选原文占位，避免面板从一片空白开始
   const word = entry.word || ctx.selection
+  const copyText = `${word}${entry.reading ? ` /${entry.reading}/` : ''}: ${entry.definition || ''}`
+  const [editing, setEditing] = useState(false)
+  const [defDraft, setDefDraft] = useState(entry.definition || '')
+
+  useEffect(() => {
+    setDefDraft(entry.definition || '')
+  }, [entry.definition])
+
+  const commitEdit = () => {
+    setEditing(false)
+    if (defDraft.trim() && defDraft !== entry.definition) {
+      onEditDefinition?.(defDraft.trim())
+    }
+  }
 
   return (
     <>
-      <div className="wc-head">
+      {onStartDrag && (
+        <div
+          className="wc-drag-bar"
+          title="按住拖拽移动卡片"
+          onPointerDown={onStartDrag}
+        />
+      )}
+      <div
+        className="wc-head"
+        onPointerDown={(e) => {
+          if ((e.target as HTMLElement).closest('button, input, textarea, a')) return
+          onStartDrag?.(e)
+        }}
+      >
         <div className="wc-head-main" onPointerDown={onStartDrag}>
           <span className="wc-word">{word}</span>
           {entry.reading && <span className="wc-reading">/{entry.reading}/</span>}
@@ -130,7 +203,7 @@ function EntryBody({
             <button
               type="button"
               className="wc-speak"
-              title="试听读音"
+              title="试听读音 (P)"
               onClick={(e) => {
                 e.stopPropagation()
                 onSpeak(word)
@@ -143,6 +216,20 @@ function EntryBody({
         </div>
 
         <div className="wc-head-actions">
+          <CopyBtn text={copyText} />
+          {onOpenSidePanel && (
+            <button
+              type="button"
+              className="wc-head-btn"
+              title="在浏览器侧边栏中打开"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenSidePanel()
+              }}
+            >
+              <PanelRight size={13} />
+            </button>
+          )}
           {onTogglePin && (
             <button
               type="button"
@@ -182,16 +269,48 @@ function EntryBody({
         </div>
       </div>
 
-      <div className="wc-def">
-        {entry.definition}
-        {/* contextTranslation 排在 definition 后面，它一开始出现就说明释义已经写完了 */}
-        {streaming && !entry.contextTranslation && <span className="wc-caret" aria-hidden />}
-      </div>
+      {editing ? (
+        <div className="wc-def-edit-wrap">
+          <textarea
+            className="wc-def-textarea"
+            rows={2}
+            autoFocus
+            value={defDraft}
+            onChange={e => setDefDraft(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
+                e.preventDefault()
+                commitEdit()
+              } else if (e.key === 'Escape') {
+                e.stopPropagation()
+                setDefDraft(entry.definition || '')
+                setEditing(false)
+              }
+            }}
+          />
+        </div>
+      ) : (
+        <div
+          className={`wc-def ${!streaming ? 'wc-def-editable' : ''}`}
+          title={!streaming ? '点击可微调释义' : undefined}
+          onClick={() => !streaming && setEditing(true)}
+        >
+          {entry.definition}
+          {/* contextTranslation 排在 definition 后面，它一开始出现就说明释义已经写完了 */}
+          {streaming && !entry.contextTranslation && <span className="wc-caret" aria-hidden />}
+        </div>
+      )}
 
       {entry.memoryHook && (
         <div className="wc-hook-card">
-          <div className="wc-hook-card-title">💡 记忆线索</div>
-          <div>{entry.memoryHook}</div>
+          <div className="wc-hook-card-header">
+            <span className="wc-hook-badge">
+              <Lightbulb size={12.5} />
+              <span>记忆线索</span>
+            </span>
+          </div>
+          <div className="wc-hook-body">{entry.memoryHook}</div>
         </div>
       )}
 
@@ -296,11 +415,25 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const [pinned, setPinned] = useState(false)
   const [fixedPos, setFixedPos] = useState<{ left: number, top: number } | null>(null)
   const [dragOffset, setDragOffset] = useState<{ x: number, y: number }>({ x: 0, y: 0 })
+  const [overrideDef, setOverrideDef] = useState<string | null>(null)
+  const [sidePanelHint, setSidePanelHint] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const [expandDict, setExpandDict] = useState(false)
   const [size, setSize] = useState({ width: PANEL_WIDTH, height: 0 })
   /** 当前流式请求的取消函数，换词或关闭面板时要调一下 */
   const streamRef = useRef<(() => void) | null>(null)
+
+  const clampPos = useCallback((left: number, top: number, width: number) => {
+    const minLeft = 8
+    const maxLeft = Math.max(minLeft, window.innerWidth - width - 8)
+    const minTop = 8
+    const maxTop = Math.max(minTop, window.innerHeight - 60)
+    return {
+      left: Math.max(minLeft, Math.min(maxLeft, left)),
+      top: Math.max(minTop, Math.min(maxTop, top)),
+    }
+  }, [])
 
   useEffect(() => {
     void getSettings().then(setSettings)
@@ -320,6 +453,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     setPinned(false)
     setFixedPos(null)
     setDragOffset({ x: 0, y: 0 })
+    setOverrideDef(null)
   }, [])
 
   const togglePin = useCallback(() => {
@@ -343,8 +477,10 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     e.preventDefault()
     e.stopPropagation()
 
+    setIsDragging(true)
     const startX = e.clientX
     const startY = e.clientY
+    const curW = panelRef.current?.offsetWidth || PANEL_WIDTH
 
     if (fixedPos) {
       const startLeft = fixedPos.left
@@ -353,13 +489,11 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       const onPointerMove = (moveEvent: PointerEvent) => {
         const dx = moveEvent.clientX - startX
         const dy = moveEvent.clientY - startY
-        setFixedPos({
-          left: startLeft + dx,
-          top: startTop + dy,
-        })
+        setFixedPos(clampPos(startLeft + dx, startTop + dy, curW))
       }
 
       const onPointerUp = () => {
+        setIsDragging(false)
         window.removeEventListener('pointermove', onPointerMove)
         window.removeEventListener('pointerup', onPointerUp)
       }
@@ -380,6 +514,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       }
 
       const onPointerUp = () => {
+        setIsDragging(false)
         window.removeEventListener('pointermove', onPointerMove)
         window.removeEventListener('pointerup', onPointerUp)
       }
@@ -387,7 +522,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       window.addEventListener('pointermove', onPointerMove)
       window.addEventListener('pointerup', onPointerUp)
     }
-  }, [fixedPos, dragOffset])
+  }, [fixedPos, dragOffset, clampPos])
 
   /**
    * 开一次 AI 详解。
@@ -397,6 +532,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
    */
   const lookup = useCallback((ctx: SelectionContext) => {
     streamRef.current?.()
+    setOverrideDef(null)
     setPhase({ kind: 'loading' })
 
     streamRef.current = openEntryStream(ctx, {
@@ -413,9 +549,20 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   }, [])
 
   const quickLookup = useCallback(async (ctx: SelectionContext) => {
+    setOverrideDef(null)
     setPhase({ kind: 'quick-loading' })
     setExpandDict(false)
-    const res = await sendMessage({ type: 'quick-translate', payload: { text: ctx.selection } })
+    const res = await sendMessage({
+      type: 'quick-translate',
+      payload: {
+        text: ctx.selection,
+        context: {
+          sentence: ctx.sentence,
+          pageTitle: document.title,
+          pageUrl: location.href,
+        },
+      },
+    })
     if (!res.ok) {
       setPhase({ kind: 'quick-error', message: res.error })
       return
@@ -424,115 +571,27 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     if (res.data.mode === 'dict') {
       setPhase({ kind: 'quick', mode: 'dict', dict: res.data.dict })
     } else {
-      setPhase({ kind: 'quick', mode: 'mt', ...res.data })
+      setPhase({ kind: 'quick', ...res.data })
     }
   }, [])
 
-  // ── 选区监听 ──────────────────────────────────
-  useEffect(() => {
-    const insideUi = (target: EventTarget | null) =>
-      target instanceof Node && shadowHost.contains(target)
-
-    const onMouseUp = (e: MouseEvent) => {
-      if (insideUi(e.target)) return
-
-      const isDoubleClick = e.detail === 2
-
-      // 交给浏览器先把选区结算完，否则拿到的还是上一次的
-      setTimeout(() => {
-        const sel = window.getSelection()
-        if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
-        if (isEditable(sel.anchorNode)) return
-
-        const range = sel.getRangeAt(0)
-        const ctx = extractContext(range)
-        if (!ctx) return
-
-        const rect = range.getBoundingClientRect()
-        setAnchor({ ctx, range: range.cloneRange(), rect })
-        setSave({ kind: 'idle' })
-        setExpandDict(false)
-
-        if (!pinned) {
-          setDragOffset({ x: 0, y: 0 })
-        }
-
-        // 双击单词时：若开启了双击查词，跳过操作胶囊直接展开快速翻译
-        if (settings.doubleClickLookup && isDoubleClick) {
-          void quickLookup(ctx)
-          return
-        }
-
-        if (settings.triggerMode === 'auto' || settings.triggerMode === 'ai') {
-          lookup(ctx)
-        } else if (settings.triggerMode === 'quick') {
-          void quickLookup(ctx)
-        } else {
-          // 如果已被 Pin 住，直接更新内容，不退回操作胶囊
-          if (pinned) {
-            void quickLookup(ctx)
-          } else {
-            setPhase({ kind: 'trigger' })
-          }
-        }
-      }, 0)
+  const openSidePanel = useCallback(async () => {
+    const res = await sendMessage({ type: 'open-sidepanel' })
+    if (!res.ok) {
+      setSidePanelHint(true)
+      setTimeout(() => setSidePanelHint(false), 3500)
     }
+  }, [])
 
-    const onMouseDown = (e: MouseEvent) => {
-      if (pinned) return
-      if (!insideUi(e.target)) dismiss()
-    }
+  const speakText = useCallback((text: string) => {
+    speak(text, {
+      lang: settings.tts.lang,
+      rate: settings.tts.rate,
+      autoDetect: settings.tts.autoDetect,
+    })
+  }, [settings.tts])
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') dismiss()
-    }
-
-    document.addEventListener('mouseup', onMouseUp)
-    document.addEventListener('mousedown', onMouseDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mouseup', onMouseUp)
-      document.removeEventListener('mousedown', onMouseDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [shadowHost, settings.triggerMode, settings.doubleClickLookup, lookup, quickLookup, dismiss, pinned])
-
-  // 页面滚动时重新贴合选区（如果已被 Pin 固定则保持视口绝对位置不动）
-  useEffect(() => {
-    if (phase.kind === 'hidden' || !anchor || (pinned && fixedPos)) return
-
-    const reposition = () => {
-      setAnchor(prev => (prev ? { ...prev, rect: prev.range.getBoundingClientRect() } : prev))
-    }
-    window.addEventListener('scroll', reposition, true)
-    window.addEventListener('resize', reposition)
-    return () => {
-      window.removeEventListener('scroll', reposition, true)
-      window.removeEventListener('resize', reposition)
-    }
-  }, [phase.kind, anchor?.range, pinned, fixedPos])
-
-  // 出结果就顺手查一次重，让「存入单词本」在用户读完释义之前就变成「已收藏」
-  const dupeWord = phase.kind === 'result'
-    ? phase.entry.word
-    : phase.kind === 'quick' && anchor
-      ? (phase.mode === 'dict' ? phase.dict.headword : anchor.ctx.selection)
-      : null
-
-  useEffect(() => {
-    if (!dupeWord) return
-
-    let stale = false
-    setDupe('unknown')
-    void sendMessage({ type: 'check-duplicate', payload: { word: dupeWord } })
-      .then((res) => {
-        // 查重途中用户可能已经划了下一个词，迟到的结果不能覆盖新状态
-        if (!stale && res.ok) setDupe(res.data.exists ? 'yes' : 'no')
-      })
-    return () => {
-      stale = true
-    }
-  }, [dupeWord])
+  const ttsReady = settings.tts.enabled && isTtsSupported()
 
   // 面板高度是内容撑出来的，量到之后才能决定往上翻还是往下放
   useEffect(() => {
@@ -568,7 +627,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     }
 
     if (res.data.queued) {
-      // 排队是个需要读一句话的结果，别急着关掉面板
       setSave({ kind: 'queued', pending: res.data.pending ?? 1 })
       return
     }
@@ -579,8 +637,11 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
   const onSave = useCallback(async () => {
     if (phase.kind !== 'result') return
-    await saveCard(phase.entry)
-  }, [phase, saveCard])
+    const entryToSave = overrideDef
+      ? { ...phase.entry, definition: overrideDef }
+      : phase.entry
+    await saveCard(entryToSave)
+  }, [phase, saveCard, overrideDef])
 
   /** 快译结果直接存卡：有离线词典用离线词典，否则用机器翻译 */
   const onSaveQuick = useCallback(async () => {
@@ -600,7 +661,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     }
 
     const dict = phase.dictionary
-    // 有词典时：首个词性 + 各义项拼成释义，比单句译文更适合进单词本
     const pos = dict?.[0]?.pos ?? ''
     const definition = dict && dict.length > 0
       ? dict
@@ -616,14 +676,27 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     })
   }, [phase, anchor, saveCard])
 
-  if (phase.kind === 'hidden' || !anchor) return null
+  // 出结果就顺手查一次重，让「存入单词本」在用户读完释义之前就变成「已收藏」
+  const dupeWord = phase.kind === 'result'
+    ? phase.entry.word
+    : phase.kind === 'quick' && anchor
+      ? (phase.mode === 'dict' ? phase.dict.headword : anchor.ctx.selection)
+      : null
 
-  const speakText = (text: string) =>
-    speak(text, { lang: settings.tts.lang, rate: settings.tts.rate })
+  useEffect(() => {
+    if (!dupeWord) return
 
-  const ttsReady = settings.tts.enabled && isTtsSupported()
+    let stale = false
+    setDupe('unknown')
+    void sendMessage({ type: 'check-duplicate', payload: { word: dupeWord } })
+      .then((res) => {
+        if (!stale && res.ok) setDupe(res.data.exists ? 'yes' : 'no')
+      })
+    return () => {
+      stale = true
+    }
+  }, [dupeWord])
 
-  // 已在牌组的词直接把按钮锁掉：让用户点一下再被 Anki 拒绝是纯粹的浪费
   const saved = save.kind === 'saved'
   const queued = save.kind === 'queued'
   const saveDisabled = save.kind === 'saving' || saved || queued || dupe === 'yes'
@@ -636,6 +709,152 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         : dupe === 'yes'
           ? '已在牌组'
           : '存入单词本'
+
+  // ── 选区监听 ──────────────────────────────────
+  useEffect(() => {
+    const insideUi = (target: EventTarget | null) =>
+      target instanceof Node && shadowHost.contains(target)
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (insideUi(e.target)) return
+
+      // 1. 域名黑名单过滤
+      const host = location.hostname.toLowerCase()
+      if (settings.blacklist?.some(item => item && host.includes(item.toLowerCase()))) {
+        return
+      }
+
+      // 2. 修饰按键检查
+      if (settings.modifierKey === 'alt' && !e.altKey) return
+      if (settings.modifierKey === 'ctrl' && !e.ctrlKey) return
+      if (settings.modifierKey === 'shift' && !e.shiftKey) return
+      if (settings.modifierKey === 'meta' && !e.metaKey) return
+
+      const isDoubleClick = e.detail === 2
+
+      // 交给浏览器先把选区结算完，否则拿到的还是上一次的
+      setTimeout(() => {
+        const sel = window.getSelection()
+        if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
+        if (isEditable(sel.anchorNode)) return
+
+        const range = sel.getRangeAt(0)
+        const ctx = extractContext(range)
+        if (!ctx) return
+
+        const rect = range.getBoundingClientRect()
+        setAnchor({ ctx, range: range.cloneRange(), rect })
+        setSave({ kind: 'idle' })
+        setExpandDict(false)
+
+        // 联动广播给侧边栏（如果已开）
+        browser.runtime.sendMessage({
+          type: 'sidepanel-sync-word',
+          payload: { word: ctx.selection, sentence: ctx.sentence },
+        }).catch(() => {})
+
+        if (!pinned) {
+          setDragOffset({ x: 0, y: 0 })
+        }
+
+        // 双击单词时：若开启了双击查词，跳过操作胶囊直接展开快速翻译
+        if (settings.doubleClickLookup && isDoubleClick) {
+          void quickLookup(ctx)
+          return
+        }
+
+        if (settings.triggerMode === 'auto' || settings.triggerMode === 'ai') {
+          lookup(ctx)
+        } else if (settings.triggerMode === 'quick') {
+          void quickLookup(ctx)
+        } else {
+          // 如果已被 Pin 住，直接更新内容，不退回操作胶囊
+          if (pinned) {
+            void quickLookup(ctx)
+          } else {
+            setPhase({ kind: 'trigger' })
+          }
+        }
+      }, 0)
+    }
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (pinned) return
+      if (!insideUi(e.target)) dismiss()
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        dismiss()
+        return
+      }
+
+      if (phase.kind === 'hidden') return
+
+      const target = e.target as HTMLElement | null
+      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+
+      if (!isInput) {
+        if (e.key === 'Enter') {
+          if (phase.kind === 'result' && !saveDisabled) {
+            e.preventDefault()
+            void onSave()
+          } else if (phase.kind === 'quick' && !saveDisabled) {
+            e.preventDefault()
+            void onSaveQuick()
+          }
+        } else if ((e.key === 'p' || e.key === 'P') && ttsReady) {
+          e.preventDefault()
+          const textToSpeak = dupeWord || anchor?.ctx.selection
+          if (textToSpeak) speakText(textToSpeak)
+        }
+      }
+    }
+
+    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [
+    shadowHost,
+    settings.triggerMode,
+    settings.doubleClickLookup,
+    settings.modifierKey,
+    settings.blacklist,
+    lookup,
+    quickLookup,
+    dismiss,
+    pinned,
+    phase.kind,
+    saveDisabled,
+    onSave,
+    onSaveQuick,
+    ttsReady,
+    dupeWord,
+    anchor,
+    speakText,
+  ])
+
+  // 页面滚动时重新贴合选区（如果已被 Pin 固定则保持视口绝对位置不动）
+  useEffect(() => {
+    if (phase.kind === 'hidden' || !anchor || (pinned && fixedPos)) return
+
+    const reposition = () => {
+      setAnchor(prev => (prev ? { ...prev, rect: prev.range.getBoundingClientRect() } : prev))
+    }
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [phase.kind, anchor?.range, pinned, fixedPos])
+
+  if (phase.kind === 'hidden' || !anchor) return null
 
   // ── 触发胶囊：⚡ 快译 | ✨ AI 词条 ────────────────
   if (phase.kind === 'trigger') {
@@ -666,12 +885,15 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     const isDict = phase.kind === 'quick' && phase.mode === 'dict'
     const wordToSpeak = isDict ? phase.dict.headword : anchor.ctx.selection
 
-    const finalLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
-    const finalTop = fixedPos ? fixedPos.top : (pos.top + dragOffset.y)
+    const rawLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
+    const rawTop = fixedPos ? fixedPos.top : (pos.top + dragOffset.y)
+    const clamped = clampPos(rawLeft, rawTop, panelWidth)
+    const finalLeft = clamped.left
+    const finalTop = clamped.top
 
     return (
       <div
-        className="wc-root wc-layer"
+        className={`wc-root wc-layer ${isDragging ? 'wc-dragging' : ''}`}
         style={{ left: finalLeft, top: finalTop }}
       >
         <div
@@ -682,7 +904,23 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
           aria-label={isLongText ? '快速翻译' : `「${anchor.ctx.selection}」的快速查词`}
         >
           <div className="wc-fade" key={phase.kind} aria-live="polite">
-            <div className="wc-head">
+            <div
+              className="wc-drag-bar"
+              title="按住拖拽移动卡片"
+              onPointerDown={onStartDrag}
+            />
+            {sidePanelHint && (
+              <div className="wc-toast-hint" role="status">
+                受浏览器限制，请点击浏览器右上角扩展栏插件图标打开侧边栏
+              </div>
+            )}
+            <div
+              className="wc-head"
+              onPointerDown={(e) => {
+                if ((e.target as HTMLElement).closest('button, input, textarea, a')) return
+                onStartDrag?.(e)
+              }}
+            >
               <div className="wc-head-main" onPointerDown={onStartDrag}>
                 {isLongText ? (
                   <span className="wc-head-title">译文</span>
@@ -726,6 +964,26 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                     {phase.mode === 'dict' ? '离线词典' : MT_PROVIDER_LABELS[phase.provider]}
                   </span>
                 )}
+                {phase.kind === 'quick' && (
+                  <CopyBtn
+                    text={
+                      isDict
+                        ? `${phase.dict.headword}${phase.dict.reading ? ` /${phase.dict.reading}/` : ''}: ${phase.dict.coreMeanings.join('； ')}`
+                        : `${anchor.ctx.selection}: ${phase.mode === 'mt' ? phase.translation : ''}`
+                    }
+                  />
+                )}
+                <button
+                  type="button"
+                  className="wc-head-btn"
+                  title="在浏览器侧边栏中打开"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void openSidePanel()
+                  }}
+                >
+                  <PanelRight size={13} />
+                </button>
                 <button
                   type="button"
                   className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
@@ -771,10 +1029,14 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               <div className="wc-quick-body">
                 {phase.dict.coreGroups && phase.dict.coreGroups.length > 0 ? (
                   <div className="wc-dict-core-groups">
-                    {phase.dict.coreGroups.map((group, gIdx) => (
-                      <div className="wc-dict-group-row" key={gIdx}>
-                        <span className="wc-pos-badge">{group.pos}</span>
-                        <span className="wc-group-meanings">{group.meanings.join('； ')}</span>
+                    {phase.dict.coreGroups.map((g, idx) => (
+                      <div className="wc-dict-group-row" key={idx}>
+                        <span className="wc-dict-group-pos">{g.pos}</span>
+                        <div className="wc-dict-group-meanings">
+                          {g.meanings.map((m, mIdx) => (
+                            <span className="wc-dict-group-item" key={mIdx}>{m}</span>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -790,8 +1052,13 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
                 {phase.dict.memoryHook && (
                   <div className="wc-hook-card">
-                    <div className="wc-hook-card-title">💡 记忆线索</div>
-                    <div>{phase.dict.memoryHook}</div>
+                    <div className="wc-hook-card-header">
+                      <span className="wc-hook-badge">
+                        <Lightbulb size={12.5} />
+                        <span>记忆线索</span>
+                      </span>
+                    </div>
+                    <div className="wc-hook-body">{phase.dict.memoryHook}</div>
                   </div>
                 )}
 
@@ -876,10 +1143,11 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   type="button"
                   className="wc-btn wc-btn-ghost"
                   disabled={saveDisabled}
-                  title={dupe === 'yes' ? '这个词已经在牌组里了' : undefined}
+                  title={dupe === 'yes' ? '这个词已经在牌组里了' : '快捷键: Enter'}
                   onClick={() => void onSaveQuick()}
                 >
-                  {saveLabel}
+                  <span>{saveLabel}</span>
+                  {!saveDisabled && <span className="wc-kbd">↵</span>}
                 </button>
               )}
               <div className="wc-spacer" />
@@ -896,13 +1164,17 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   }
 
   // ── AI 词条面板 ──────────────────────────────
-  const pos = placeAt(anchor.rect, size.width || PANEL_WIDTH, size.height)
-  const finalLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
-  const finalTop = fixedPos ? fixedPos.top : (pos.top + dragOffset.y)
+  const panelW = size.width || PANEL_WIDTH
+  const pos = placeAt(anchor.rect, panelW, size.height)
+  const rawLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
+  const rawTop = fixedPos ? fixedPos.top : (pos.top + dragOffset.y)
+  const clamped = clampPos(rawLeft, rawTop, panelW)
+  const finalLeft = clamped.left
+  const finalTop = clamped.top
 
   return (
     <div
-      className="wc-root wc-layer"
+      className={`wc-root wc-layer ${isDragging ? 'wc-dragging' : ''}`}
       style={{
         left: finalLeft,
         top: finalTop,
@@ -919,6 +1191,11 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         aria-label={`「${anchor.ctx.selection}」的词条`}
       >
         <div className="wc-fade" key={phase.kind} aria-live="polite">
+        {sidePanelHint && (
+          <div className="wc-toast-hint" role="status">
+            受浏览器限制，请点击浏览器右上角扩展栏插件图标打开侧边栏
+          </div>
+        )}
         {phase.kind === 'loading' && (
           <>
             <Skeleton
@@ -926,6 +1203,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               pinned={pinned}
               onTogglePin={togglePin}
               onClose={dismiss}
+              onOpenSidePanel={openSidePanel}
             />
             <div className="wc-state wc-state-quiet">
               <Dots />
@@ -965,13 +1243,14 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             onTogglePin={togglePin}
             onStartDrag={onStartDrag}
             onClose={dismiss}
+            onOpenSidePanel={openSidePanel}
           />
         )}
 
         {phase.kind === 'result' && (
           <>
             <EntryBody
-              entry={phase.entry}
+              entry={overrideDef ? { ...phase.entry, definition: overrideDef } : phase.entry}
               ctx={anchor.ctx}
               ttsReady={ttsReady}
               onSpeak={speakText}
@@ -979,6 +1258,8 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               onTogglePin={togglePin}
               onStartDrag={onStartDrag}
               onClose={dismiss}
+              onOpenSidePanel={openSidePanel}
+              onEditDefinition={setOverrideDef}
             />
 
             <div className="wc-actions">
@@ -987,9 +1268,10 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 className="wc-btn wc-btn-primary"
                 onClick={() => void onSave()}
                 disabled={saveDisabled}
-                title={dupe === 'yes' ? '这个词已经在牌组里了' : undefined}
+                title={dupe === 'yes' ? '这个词已经在牌组里了' : '快捷键: Enter'}
               >
-                {saveLabel}
+                <span>{saveLabel}</span>
+                {!saveDisabled && <span className="wc-kbd">↵ Enter</span>}
               </button>
 
               {saved && (

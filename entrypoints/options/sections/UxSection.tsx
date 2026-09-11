@@ -30,6 +30,23 @@ export function UxSection({ s, onChange }: SectionProps) {
       </p>
 
       <div className="field">
+        <span>辅助按键</span>
+        <Segmented
+          value={s.modifierKey || 'none'}
+          options={[
+            { value: 'none', label: '直接划选' },
+            { value: 'alt', label: '按住 Alt' },
+            { value: 'ctrl', label: '按住 Ctrl' },
+            { value: 'shift', label: '按住 Shift' },
+          ]}
+          onChange={modifierKey => onChange({ ...s, modifierKey: modifierKey as Settings['modifierKey'] })}
+        />
+      </div>
+      <p className="hint">
+        「直接划选」选中文本即触发；设置辅助键后，需在划选的同时按住该键才会唤起，防止日常阅读复制时误触。
+      </p>
+
+      <div className="field">
         <span>双击查词</span>
         <div className="field-inline">
           <Switch
@@ -43,6 +60,25 @@ export function UxSection({ s, onChange }: SectionProps) {
       </div>
       <p className="hint">
         开启后，双击网页中的单词跳过操作胶囊，直接展开离线词典或在线机翻。
+      </p>
+
+      <label className="field">
+        <span>禁用域名</span>
+        <textarea
+          rows={3}
+          placeholder="每行一个域名，例如 github.com 或 docs.google.com"
+          value={(s.blacklist || []).join('\n')}
+          onChange={e => onChange({
+            ...s,
+            blacklist: e.target.value
+              .split('\n')
+              .map(x => x.trim().toLowerCase())
+              .filter(Boolean),
+          })}
+        />
+      </label>
+      <p className="hint">
+        在这些网站上完全禁用划词弹窗，避免干扰代码编辑或在线文档协作。
       </p>
 
       <label className="field">
@@ -64,7 +100,21 @@ export function UxSection({ s, onChange }: SectionProps) {
           {LANGUAGE_PRESETS.map(l => <option key={l.label} value={l.label}>{l.label}</option>)}
         </select>
       </label>
-      <p className="hint">决定试听与 Anki 卡片朗读的发音。</p>
+      <p className="hint">决定试听与 Anki 卡片朗读的主默认发音。</p>
+
+      <div className="field">
+        <span>语种识别</span>
+        <div className="field-inline">
+          <Switch
+            checked={s.tts.autoDetect ?? true}
+            onChange={autoDetect => patchTts({ autoDetect })}
+          />
+          <span className="field-inline-label">
+            划词试听时智能识别语种（如日语、韩语、德语等）
+          </span>
+        </div>
+      </div>
+      <p className="hint">开启后若划选文本明显属于其它语种，自动使用对应语种音色朗读，避免用英语发音混读。</p>
 
       <div className="field">
         <span>试听按钮</span>

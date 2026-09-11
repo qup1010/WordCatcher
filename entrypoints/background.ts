@@ -27,9 +27,16 @@ import {
   readPending,
   removePending,
 } from '@/lib/pending'
+import {
+  addHistory,
+  clearHistory,
+  markHistorySaved,
+  readHistory,
+  removeHistory,
+} from '@/lib/history'
 import { getSettings, isAiConfigured } from '@/lib/settings'
 
-async function handle(req: Request): Promise<Result<unknown>> {
+async function handle(req: Request, sender?: Browser.runtime.MessageSender): Promise<Result<unknown>> {
   const settings = await getSettings()
 
   switch (req.type) {
@@ -79,6 +86,7 @@ async function handle(req: Request): Promise<Result<unknown>> {
     case 'quick-translate': {
       const text = req.payload.text.trim()
       const isShortWord = text.length > 0 && text.split(/\s+/).length <= 2
+      const ctx = req.payload.context
 
       if (settings.dict.enabled && isShortWord) {
         try {
@@ -86,6 +94,15 @@ async function handle(req: Request): Promise<Result<unknown>> {
           if (meta.status === 'ready') {
             const dictRes = await lookupWord(text)
             if (dictRes) {
+              void addHistory({
+                word: dictRes.headword,
+                reading: dictRes.reading,
+                definition: dictRes.coreMeanings.join('； '),
+                sentence: ctx?.sentence,
+                pageTitle: ctx?.pageTitle,
+                pageUrl: ctx?.pageUrl,
+                source: 'dict',
+              })
               return { ok: true, data: { mode: 'dict', dict: dictRes } }
             }
           }
@@ -99,6 +116,16 @@ async function handle(req: Request): Promise<Result<unknown>> {
         provider: settings.mt.provider,
         explainLanguage: settings.explainLanguage,
       })
+
+      void addHistory({
+        word: text,
+        definition: result.translation,
+        sentence: ctx?.sentence,
+        pageTitle: ctx?.pageTitle,
+        pageUrl: ctx?.pageUrl,
+        source: 'mt',
+      })
+
       return { ok: true, data: { mode: 'mt', ...result } }
     }
 
@@ -120,12 +147,14 @@ async function handle(req: Request): Promise<Result<unknown>> {
         }
 
         const noteId = await addNote(req.payload, settings)
+        void markHistorySaved(req.payload.entry.word)
         return { ok: true, data: { noteId, queued: false } }
       } catch (err) {
         // Anki 没开就先排队，让用户能接着读下去；其它错误（重复词等）照常报出去
         if (!(err instanceof AnkiError && err.kind === 'unreachable')) throw err
 
         const queued = await enqueue(req.payload)
+        void markHistorySaved(req.payload.entry.word)
         return { ok: true, data: { noteId: null, queued: true, pending: queued } }
       }
     }
@@ -189,6 +218,72 @@ async function handle(req: Request): Promise<Result<unknown>> {
       await browser.runtime.openOptionsPage()
       return { ok: true, data: null }
     }
+
+    case 'history-list': {
+      const list = await readHistory()
+      return { ok: true, data: list }
+    }
+
+    case 'history-remove': {
+      const next = await removeHistory(req.payload.id)
+      return { ok: true, data: next }
+    }
+
+    case 'history-clear': {
+      await clearHistory()
+      return { ok: true, data: null }
+    }
+
+    case 'open-sidepanel': {
+      const globalChrome = (globalThis as unknown as {
+        chrome?: {
+          sidePanel?: {
+            open?: (opts: { windowId?: number, tabId?: number }) => Promise<void>
+          }
+        }
+      }).chrome
+      const sidePanel = (browser as unknown as {
+        sidePanel?: {
+          open?: (opts: { windowId?: number, tabId?: number }) => Promise<void>
+        }
+      }).sidePanel || globalChrome?.sidePanel
+
+      if (!sidePanel?.open) {
+        return { ok: false, error: '当前浏览器不支持侧边栏 API' }
+      }
+
+      try {
+        let winId = sender?.tab?.windowId
+        if (!winId) {
+          const win = await browser.windows.getLastFocused({ populate: false }).catch(() => null)
+          winId = win?.id
+        }
+
+        if (winId) {
+          try {
+            await sidePanel.open({ windowId: winId })
+            return { ok: true, data: null }
+          } catch (winErr) {
+            // 如果按 windowId 打开失败，尝试按当前 tabId 打开
+            if (sender?.tab?.id) {
+              await sidePanel.open({ tabId: sender.tab.id })
+              return { ok: true, data: null }
+            }
+            throw winErr
+          }
+        } else if (sender?.tab?.id) {
+          await sidePanel.open({ tabId: sender.tab.id })
+          return { ok: true, data: null }
+        }
+        return { ok: false, error: '无法定位当前窗口' }
+      } catch (err) {
+        const msg = toErrorMessage(err)
+        if (msg.toLowerCase().includes('user gesture') || msg.toLowerCase().includes('gesture')) {
+          return { ok: false, error: 'gesture_required' }
+        }
+        return { ok: false, error: msg }
+      }
+    }
   }
 }
 
@@ -222,6 +317,13 @@ function handleEntryStream(port: Browser.runtime.Port): void {
         const key = cacheKey({ ...req, settings })
         const cached = getCached(key)
         if (cached) {
+          void addHistory({
+            word: cached.word || req.selection,
+            reading: cached.reading,
+            definition: cached.definition,
+            sentence: req.sentence,
+            source: 'ai',
+          })
           // 命中缓存就没什么可流的了，直接给最终结果
           if (alive) port.postMessage({ type: 'done', entry: cached } satisfies StreamEvent)
           return
@@ -248,6 +350,14 @@ function handleEntryStream(port: Browser.runtime.Port): void {
         }
 
         setCached(key, entry)
+        void addHistory({
+          word: entry.word || req.selection,
+          reading: entry.reading,
+          definition: entry.definition,
+          sentence: req.sentence,
+          source: 'ai',
+        })
+
         if (alive) port.postMessage({ type: 'done', entry } satisfies StreamEvent)
       } catch (err) {
         if (alive) {
@@ -268,12 +378,22 @@ export default defineBackground(() => {
 
   // 用 sendResponse + return true，而不是返回 Promise：
   // WXT 0.20 起 browser 默认走原生 API，Chrome 的 onMessage 不认 Promise 返回值。
-  browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    handle(message as Request)
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    handle(message as Request, sender)
       .then(sendResponse)
       .catch((err: unknown) => sendResponse({ ok: false, error: toErrorMessage(err) }))
     return true
   })
+
+  // 尝试配置点击扩展图标时默认展开侧边栏（如果宿主浏览器支持）
+  const globalChrome = (globalThis as unknown as {
+    chrome?: {
+      sidePanel?: {
+        setPanelBehavior?: (opts: { openPanelOnActionClick: boolean }) => Promise<void>
+      }
+    }
+  }).chrome
+  globalChrome?.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true })?.catch?.(() => {})
 
   // 首次安装直接把设置页推到用户面前——没配 key 的话插件什么也做不了
   browser.runtime.onInstalled.addListener((details) => {

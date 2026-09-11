@@ -1,3 +1,5 @@
+import { detectLanguage } from './lang-detector'
+
 /**
  * 插件内试听，用浏览器自带的 Web Speech API：免费、离线、不依赖任何第三方接口。
  *
@@ -9,17 +11,27 @@ export function isTtsSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
-export function speak(text: string, opts: { lang: string, rate: number }): void {
+export interface SpeakOptions {
+  lang: string
+  rate: number
+  autoDetect?: boolean
+}
+
+export function speak(text: string, opts: SpeakOptions): void {
   if (!isTtsSupported() || !text.trim()) return
 
   // 连点时不要排队叠加，直接打断上一条
   window.speechSynthesis.cancel()
 
+  const targetLang = opts.autoDetect
+    ? detectLanguage(text, opts.lang).bcp47
+    : opts.lang
+
   const utterance = new SpeechSynthesisUtterance(text)
-  utterance.lang = opts.lang
+  utterance.lang = targetLang
   utterance.rate = opts.rate
 
-  const voice = pickVoice(opts.lang)
+  const voice = pickVoice(targetLang)
   if (voice) utterance.voice = voice
 
   window.speechSynthesis.speak(utterance)

@@ -68,6 +68,16 @@ describe('speak', () => {
     expect(spoken[0].voice).toBeNull()
   })
 
+  it('开启 autoDetect 时智能切换语种发音', () => {
+    const { spoken } = mockSpeech([
+      { name: 'US Voice', lang: 'en-US' },
+      { name: 'JP Voice', lang: 'ja-JP' },
+    ])
+    speak('こんにちは', { lang: 'en-US', rate: 1, autoDetect: true })
+    expect(spoken[0].lang).toBe('ja-JP')
+    expect((spoken[0].voice as { name: string }).name).toBe('JP Voice')
+  })
+
   it('空文本不触发朗读', () => {
     const { spoken } = mockSpeech()
     speak('   ', { lang: 'en-US', rate: 1 })

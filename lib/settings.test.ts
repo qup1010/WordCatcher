@@ -85,6 +85,16 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({}).doubleClickLookup).toBe(false)
     expect(normalizeSettings({ doubleClickLookup: true }).doubleClickLookup).toBe(true)
   })
+
+  it('modifierKey 与 blacklist 配置可正常解析与兜底', () => {
+    expect(normalizeSettings({}).modifierKey).toBe('none')
+    expect(normalizeSettings({ modifierKey: 'alt' }).modifierKey).toBe('alt')
+    expect(normalizeSettings({ modifierKey: 'invalid' as any }).modifierKey).toBe('none')
+
+    expect(normalizeSettings({}).blacklist).toEqual([])
+    expect(normalizeSettings({ blacklist: ['github.com', 'localhost'] }).blacklist).toEqual(['github.com', 'localhost'])
+    expect(normalizeSettings({ blacklist: 'not-array' as any }).blacklist).toEqual([])
+  })
 })
 
 describe('getSettings / saveSettings', () => {
