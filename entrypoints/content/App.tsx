@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronUp, Copy, GripHorizontal, Lightbulb, PanelRight, Pencil, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, Lightbulb, PanelRight, Pencil, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
 import { browser } from '#imports'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PartialEntry } from '@/lib/ai'
@@ -14,10 +14,19 @@ import { isTtsSupported, speak, stopSpeaking } from '@/lib/tts'
 import { DEFAULT_SETTINGS, type Settings, type WordEntry } from '@/lib/types'
 
 const PANEL_WIDTH = 372
-const QUICK_WIDTH = 320
+const QUICK_WIDTH = 356
 const QUICK_LONG_WIDTH = 440
 const PILL_WIDTH = 152
 const PILL_HEIGHT = 34
+
+/** 解析释义中的词性前缀（如 "n. 重置" 或 "adj. 准确的"） */
+function parseMeaningItem(raw: string): { pos?: string, text: string } {
+  const match = raw.match(/^([a-zA-Z]{1,6}\.?)\s+(.*)$/)
+  if (match) {
+    return { pos: match[1], text: match[2] }
+  }
+  return { text: raw }
+}
 
 /** 复制按钮组件 */
 function CopyBtn({ text, title = '复制词条' }: { text: string, title?: string }) {
@@ -79,16 +88,6 @@ function Skeleton({ onStartDrag, pinned, onTogglePin, onClose, onOpenSidePanel }
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div className="wc-sk-bar wc-sk-word" style={{ margin: 0 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {onOpenSidePanel && (
-            <button
-              type="button"
-              className="wc-head-btn"
-              title="在浏览器侧边栏中打开"
-              onClick={onOpenSidePanel}
-            >
-              <PanelRight size={13} />
-            </button>
-          )}
           {onTogglePin && (
             <button
               type="button"
@@ -99,20 +98,20 @@ function Skeleton({ onStartDrag, pinned, onTogglePin, onClose, onOpenSidePanel }
               <Pin size={13} />
             </button>
           )}
-          {onStartDrag && (
+          {onOpenSidePanel && (
             <button
               type="button"
-              className="wc-head-btn wc-drag-handle"
-              title="按住拖拽移动卡片"
-              onPointerDown={onStartDrag}
+              className="wc-head-btn"
+              title="在浏览器侧边栏中打开"
+              onClick={onOpenSidePanel}
             >
-              <GripHorizontal size={14} />
+              <PanelRight size={13} />
             </button>
           )}
           {onClose && (
             <button
               type="button"
-              className="wc-head-btn"
+              className="wc-head-btn wc-head-btn-close"
               title="关闭 (Esc)"
               onClick={onClose}
             >
@@ -216,6 +215,19 @@ function EntryBody({
         </div>
 
         <div className="wc-head-actions">
+          {onTogglePin && (
+            <button
+              type="button"
+              className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
+              title={pinned ? '取消固定（点击外部可关闭）' : '固定卡片（防止点击外部关闭，划选新词时在当前位置更新）'}
+              onClick={(e) => {
+                e.stopPropagation()
+                onTogglePin()
+              }}
+            >
+              <Pin size={13} />
+            </button>
+          )}
           <CopyBtn text={copyText} />
           {onOpenSidePanel && (
             <button
@@ -230,33 +242,10 @@ function EntryBody({
               <PanelRight size={13} />
             </button>
           )}
-          {onTogglePin && (
-            <button
-              type="button"
-              className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
-              title={pinned ? '取消固定（点击外部可关闭）' : '固定卡片（防止点击外部关闭，划选新词时在当前位置更新）'}
-              onClick={(e) => {
-                e.stopPropagation()
-                onTogglePin()
-              }}
-            >
-              <Pin size={13} />
-            </button>
-          )}
-          {onStartDrag && (
-            <button
-              type="button"
-              className="wc-head-btn wc-drag-handle"
-              title="按住拖拽移动卡片"
-              onPointerDown={onStartDrag}
-            >
-              <GripHorizontal size={14} />
-            </button>
-          )}
           {onClose && (
             <button
               type="button"
-              className="wc-head-btn"
+              className="wc-head-btn wc-head-btn-close"
               title="关闭 (Esc)"
               onClick={(e) => {
                 e.stopPropagation()
@@ -922,30 +911,32 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               }}
             >
               <div className="wc-head-main" onPointerDown={onStartDrag}>
-                {isLongText ? (
-                  <span className="wc-head-title">译文</span>
-                ) : (
-                  <span className="wc-word wc-word-sm">
-                    {isDict ? phase.dict.headword : anchor.ctx.selection}
-                  </span>
-                )}
+                <span className="wc-word-wrap">
+                  {isLongText ? (
+                    <span className="wc-head-title">译文</span>
+                  ) : (
+                    <span className="wc-word wc-word-sm">
+                      {isDict ? phase.dict.headword : anchor.ctx.selection}
+                    </span>
+                  )}
+                  {ttsReady && (
+                    <button
+                      type="button"
+                      className="wc-speak"
+                      title={isLongText ? '朗读原文' : '试听读音 (P)'}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        speakText(wordToSpeak)
+                      }}
+                    >
+                      <Volume2 size={15} />
+                    </button>
+                  )}
+                </span>
                 {!isLongText && isDict && phase.dict.reading && (
                   <span className="wc-reading">
                     /{phase.dict.reading}/
                   </span>
-                )}
-                {ttsReady && (
-                  <button
-                    type="button"
-                    className="wc-speak"
-                    title={isLongText ? '朗读原文' : '试听读音'}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      speakText(wordToSpeak)
-                    }}
-                  >
-                    <Volume2 size={15} />
-                  </button>
                 )}
               </div>
 
@@ -964,6 +955,17 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                     {phase.mode === 'dict' ? '离线词典' : MT_PROVIDER_LABELS[phase.provider]}
                   </span>
                 )}
+                <button
+                  type="button"
+                  className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
+                  title={pinned ? '取消固定（点击外部可关闭）' : '固定卡片（防止点击外部关闭，划选新词时在当前位置更新）'}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    togglePin()
+                  }}
+                >
+                  <Pin size={13} />
+                </button>
                 {phase.kind === 'quick' && (
                   <CopyBtn
                     text={
@@ -986,26 +988,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 </button>
                 <button
                   type="button"
-                  className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
-                  title={pinned ? '取消固定（点击外部可关闭）' : '固定卡片（防止点击外部关闭，划选新词时在当前位置更新）'}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    togglePin()
-                  }}
-                >
-                  <Pin size={13} />
-                </button>
-                <button
-                  type="button"
-                  className="wc-head-btn wc-drag-handle"
-                  title="按住拖拽移动卡片"
-                  onPointerDown={onStartDrag}
-                >
-                  <GripHorizontal size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="wc-head-btn"
+                  className="wc-head-btn wc-head-btn-close"
                   title="关闭 (Esc)"
                   onClick={(e) => {
                     e.stopPropagation()
@@ -1031,7 +1014,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   <div className="wc-dict-core-groups">
                     {phase.dict.coreGroups.map((g, idx) => (
                       <div className="wc-dict-group-row" key={idx}>
-                        <span className="wc-dict-group-pos">{g.pos}</span>
+                        <span className="wc-pos-badge">{g.pos}</span>
                         <div className="wc-dict-group-meanings">
                           {g.meanings.map((m, mIdx) => (
                             <span className="wc-dict-group-item" key={mIdx}>{m}</span>
@@ -1042,11 +1025,15 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   </div>
                 ) : (
                   <div className="wc-dict-core-list">
-                    {phase.dict.coreMeanings.map((m, idx) => (
-                      <div className="wc-dict-core-item" key={idx}>
-                        {m}
-                      </div>
-                    ))}
+                    {phase.dict.coreMeanings.map((m, idx) => {
+                      const parsed = parseMeaningItem(m)
+                      return (
+                        <div className="wc-dict-group-row" key={idx}>
+                          {parsed.pos && <span className="wc-pos-badge">{parsed.pos}</span>}
+                          <span className="wc-group-meanings">{parsed.text}</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
 
