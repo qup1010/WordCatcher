@@ -267,6 +267,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .chip, .btn { transition: none; }
+  .pop-spin { animation: none; }
 }
 
 .pop-blank {
@@ -348,6 +349,42 @@
   color: var(--danger);
 }
 
+.pop-clear-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: var(--danger-wash);
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.pop-clear-confirm span { margin-right: auto; }
+
+.pop-clear-confirm button {
+  border: none;
+  background: transparent;
+  color: var(--teal);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.pop-clear-confirm button.danger { color: var(--danger); }
+
+.pop-history-feedback {
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.pop-history-feedback.ok { color: var(--teal); background: var(--teal-wash); }
+.pop-history-feedback.err { color: var(--danger); background: var(--danger-wash); }
+
 .pop-history-item {
   background: var(--bg-hover, rgba(0,0,0,0.03));
   border: 1px solid var(--hairline);
@@ -402,6 +439,14 @@
   background: var(--teal-wash);
 }
 
+.pop-btn-icon-sm:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@keyframes pop-spin { to { transform: rotate(360deg); } }
+.pop-spin { animation: pop-spin 0.9s linear infinite; }
+
 .pop-badge-saved {
   font-size: 9.5px;
   color: var(--teal);
@@ -415,7 +460,13 @@
   padding: 30px 10px;
   color: var(--ink-faint);
   font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
+
+.pop-empty strong { color: var(--ink-soft); font-size: 12.5px; }
+.pop-empty span { line-height: 1.55; }
 
 .pop-sidepanel-btn {
   margin-top: 6px;
@@ -427,4 +478,3 @@
 .pop-sidepanel-btn:hover {
   background: var(--bg-hover, rgba(0,0,0,0.05));
 }
-

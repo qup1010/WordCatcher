@@ -1,4 +1,4 @@
-import { BookOpen, Check, Database, Info, Layers, Sparkles, Volume2, Zap } from 'lucide-react'
+import { AlertCircle, BookOpen, Check, Database, Info, Layers, Sparkles, Volume2, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sendMessage } from '@/lib/messaging'
 import type { DictMeta } from '@/lib/open-dict/types'
@@ -30,7 +30,7 @@ const NAV_SECTIONS = [
 export default function App() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [ankiAlive, setAnkiAlive] = useState<boolean | null>(null)
   const [dictMeta, setDictMeta] = useState<DictMeta | null>(null)
   const [activeNav, setActiveNav] = useState<string>(NAV_SECTIONS[0].id)
@@ -59,10 +59,12 @@ export default function App() {
     }
     setSaveState('saving')
     const t = setTimeout(() => {
-      void saveSettings(s).then(() => {
-        setSaveState('saved')
-        setTimeout(() => setSaveState('idle'), 1600)
-      })
+      void saveSettings(s)
+        .then(() => {
+          setSaveState('saved')
+          setTimeout(() => setSaveState('idle'), 1600)
+        })
+        .catch(() => setSaveState('error'))
     }, 400)
     return () => clearTimeout(t)
   }, [s, loaded])
@@ -158,12 +160,18 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`save-note ${saveState !== 'idle' ? 'save-note-show' : ''}`}>
+          <div className={`save-note ${saveState !== 'idle' ? 'save-note-show' : ''} ${saveState === 'error' ? 'save-note-error' : ''}`}>
             {saveState === 'saving' && <span>保存中…</span>}
             {saveState === 'saved' && (
               <>
                 <Check size={12} />
                 <span>已自动保存</span>
+              </>
+            )}
+            {saveState === 'error' && (
+              <>
+                <AlertCircle size={12} />
+                <span>自动保存失败，请再修改一次重试</span>
               </>
             )}
           </div>

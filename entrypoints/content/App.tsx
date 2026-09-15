@@ -44,6 +44,7 @@ function CopyBtn({ text, title = '复制词条' }: { text: string, title?: strin
       type="button"
       className={`wc-head-btn ${copied ? 'wc-copied' : ''}`}
       title={copied ? '已复制到剪贴板！' : title}
+      aria-label={copied ? '已复制' : title}
       onClick={onCopy}
     >
       {copied ? <Check size={13} style={{ color: '#3fb950' }} /> : <Copy size={13} />}
@@ -409,6 +410,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const [isDragging, setIsDragging] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const [expandDict, setExpandDict] = useState(false)
+  const [expandHook, setExpandHook] = useState(false)
   const [size, setSize] = useState({ width: PANEL_WIDTH, height: 0 })
   /** 当前流式请求的取消函数，换词或关闭面板时要调一下 */
   const streamRef = useRef<(() => void) | null>(null)
@@ -439,6 +441,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     setDupe('unknown')
     setAnchor(null)
     setExpandDict(false)
+    setExpandHook(false)
     setPinned(false)
     setFixedPos(null)
     setDragOffset({ x: 0, y: 0 })
@@ -541,6 +544,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     setOverrideDef(null)
     setPhase({ kind: 'quick-loading' })
     setExpandDict(false)
+    setExpandHook(false)
     const res = await sendMessage({
       type: 'quick-translate',
       payload: {
@@ -591,7 +595,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [phase.kind, expandDict])
+  }, [phase.kind, expandDict, expandHook])
 
   const saveCard = useCallback(async (entry: WordEntry) => {
     if (!anchor) return
@@ -735,6 +739,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         setAnchor({ ctx, range: range.cloneRange(), rect })
         setSave({ kind: 'idle' })
         setExpandDict(false)
+        setExpandHook(false)
 
         // 联动广播给侧边栏（如果已开）
         browser.runtime.sendMessage({
@@ -924,6 +929,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                       type="button"
                       className="wc-speak"
                       title={isLongText ? '朗读原文' : '试听读音 (P)'}
+                      aria-label={isLongText ? '朗读原文' : `朗读 ${wordToSpeak}`}
                       onClick={(e) => {
                         e.stopPropagation()
                         speakText(wordToSpeak)
@@ -941,24 +947,42 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               </div>
 
               <div className="wc-head-actions">
-                {phase.kind === 'quick' && (
-                  <span
-                    className={`wc-tag ${phase.mode === 'mt' && phase.fellBack ? 'wc-tag-alt' : ''}`}
-                    title={
-                      phase.mode === 'dict'
-                        ? '已从本地 Open Dictionary 离线词库检索'
-                        : phase.fellBack
-                          ? `首选服务连不上，已自动切换到${MT_PROVIDER_LABELS[phase.provider]}`
-                          : undefined
-                    }
-                  >
-                    {phase.mode === 'dict' ? '离线词典' : MT_PROVIDER_LABELS[phase.provider]}
-                  </span>
-                )}
+                <button
+                  type="button"
+                  className="wc-head-btn wc-head-btn-close"
+                  title="关闭 (Esc)"
+                  aria-label="关闭翻译面板"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    dismiss()
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+
+            <div className="wc-quick-toolbar">
+              {phase.kind === 'quick' ? (
+                <span
+                  className={`wc-tag ${phase.mode === 'mt' && phase.fellBack ? 'wc-tag-alt' : ''}`}
+                  title={
+                    phase.mode === 'dict'
+                      ? '已从本地 Open Dictionary 离线词库检索'
+                      : phase.fellBack
+                        ? `首选服务连不上，已自动切换到${MT_PROVIDER_LABELS[phase.provider]}`
+                        : undefined
+                  }
+                >
+                  {phase.mode === 'dict' ? '离线词典' : MT_PROVIDER_LABELS[phase.provider]}
+                </span>
+              ) : <span />}
+              <div className="wc-quick-tools" aria-label="面板工具">
                 <button
                   type="button"
                   className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
                   title={pinned ? '取消固定（点击外部可关闭）' : '固定卡片（防止点击外部关闭，划选新词时在当前位置更新）'}
+                  aria-label={pinned ? '取消固定翻译面板' : '固定翻译面板'}
                   onClick={(e) => {
                     e.stopPropagation()
                     togglePin()
@@ -979,23 +1003,13 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   type="button"
                   className="wc-head-btn"
                   title="在浏览器侧边栏中打开"
+                  aria-label="在浏览器侧边栏中打开"
                   onClick={(e) => {
                     e.stopPropagation()
                     void openSidePanel()
                   }}
                 >
                   <PanelRight size={13} />
-                </button>
-                <button
-                  type="button"
-                  className="wc-head-btn wc-head-btn-close"
-                  title="关闭 (Esc)"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    dismiss()
-                  }}
-                >
-                  <X size={14} />
                 </button>
               </div>
             </div>
@@ -1044,8 +1058,20 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                         <Lightbulb size={12.5} />
                         <span>记忆线索</span>
                       </span>
+                      {phase.dict.memoryHook.length > 64 && (
+                        <button
+                          type="button"
+                          className="wc-hook-toggle"
+                          aria-expanded={expandHook}
+                          onClick={() => setExpandHook(value => !value)}
+                        >
+                          {expandHook ? '收起' : '展开'}
+                        </button>
+                      )}
                     </div>
-                    <div className="wc-hook-body">{phase.dict.memoryHook}</div>
+                    <div className={`wc-hook-body ${phase.dict.memoryHook.length > 64 && !expandHook ? 'wc-hook-body-clamped' : ''}`}>
+                      {phase.dict.memoryHook}
+                    </div>
                   </div>
                 )}
 
@@ -1056,8 +1082,8 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                       className="wc-dict-toggle"
                       onClick={() => setExpandDict(!expandDict)}
                     >
-                      {expandDict ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                       <span>{expandDict ? '收起全部义项' : '展开全部词性与义项'}</span>
+                      {expandDict ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                     </button>
 
                     {expandDict && (
@@ -1110,10 +1136,22 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               {phase.kind === 'quick-error' && (
                 <button
                   type="button"
-                  className="wc-btn wc-btn-ghost"
+                  className="wc-btn wc-btn-primary"
                   onClick={() => void quickLookup(anchor.ctx)}
                 >
                   重试
+                </button>
+              )}
+              {phase.kind === 'quick' && (
+                <button
+                  type="button"
+                  className="wc-btn wc-btn-primary"
+                  disabled={saveDisabled}
+                  title={dupe === 'yes' ? '这个词已经在牌组里了' : '快捷键: Enter'}
+                  onClick={() => void onSaveQuick()}
+                >
+                  <span>{saveLabel}</span>
+                  {!saveDisabled && <span className="wc-kbd">↵</span>}
                 </button>
               )}
               <button
@@ -1125,18 +1163,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 <Sparkles size={14} />
                 <span>AI 释义</span>
               </button>
-              {phase.kind === 'quick' && (
-                <button
-                  type="button"
-                  className="wc-btn wc-btn-ghost"
-                  disabled={saveDisabled}
-                  title={dupe === 'yes' ? '这个词已经在牌组里了' : '快捷键: Enter'}
-                  onClick={() => void onSaveQuick()}
-                >
-                  <span>{saveLabel}</span>
-                  {!saveDisabled && <span className="wc-kbd">↵</span>}
-                </button>
-              )}
               <div className="wc-spacer" />
               <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
             </div>

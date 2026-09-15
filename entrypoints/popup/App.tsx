@@ -1,4 +1,4 @@
-import { Check, Inbox, PanelRight, Settings2, Trash2, Volume2 } from 'lucide-react'
+import { Check, Inbox, LoaderCircle, PanelRight, Settings2, Trash2, Volume2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { browser } from '#imports'
 import type { MtProvider } from '@/lib/machine-translate'
@@ -19,6 +19,7 @@ import './App.css'
 type Probe = { kind: 'checking' } | { kind: 'ok', version: number } | { kind: 'err' }
 
 type Flush = { kind: 'idle' } | { kind: 'busy' } | { kind: 'done', text: string }
+type HistoryFeedback = { kind: 'ok' | 'err', text: string } | null
 
 const MT_PROVIDERS: MtProvider[] = ['microsoft', 'google']
 
@@ -36,6 +37,9 @@ export default function App() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [pending, setPending] = useState(0)
   const [flush, setFlush] = useState<Flush>({ kind: 'idle' })
+  const [historyBusy, setHistoryBusy] = useState<string | null>(null)
+  const [historyFeedback, setHistoryFeedback] = useState<HistoryFeedback>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
 
   const loadHistory = useCallback(async () => {
     const res = await sendMessage({ type: 'history-list' })
@@ -80,9 +84,15 @@ export default function App() {
     })
   }
 
-  const openSidePanel = () => {
-    void sendMessage({ type: 'open-sidepanel' })
-    window.close()
+  const openSidePanel = async () => {
+    const res = await sendMessage({ type: 'open-sidepanel' })
+    if (res.ok) {
+      window.close()
+    } else {
+      setSaveError(res.error === 'gesture_required'
+        ? '浏览器需要一次用户操作，请再点一次打开侧边栏。'
+        : res.error)
+    }
   }
 
   const onSpeakWord = (word: string) => {
@@ -95,7 +105,9 @@ export default function App() {
   }
 
   const onSaveHistoryItem = async (item: HistoryItem) => {
-    await sendMessage({
+    setHistoryBusy(item.id)
+    setHistoryFeedback(null)
+    const res = await sendMessage({
       type: 'save-card',
       payload: {
         entry: {
@@ -113,17 +125,40 @@ export default function App() {
         createdAt: Date.now(),
       },
     })
-    void loadHistory()
+    setHistoryBusy(null)
+    if (res.ok) {
+      setHistoryList(list => list.map(historyItem => (
+        historyItem.id === item.id ? { ...historyItem, savedToAnki: true } : historyItem
+      )))
+      if (res.data.queued && res.data.pending !== undefined) setPending(res.data.pending)
+      setHistoryFeedback({
+        kind: 'ok',
+        text: res.data.queued ? `Anki 未连接，「${item.word}」已安全暂存。` : `「${item.word}」已存入 Anki。`,
+      })
+    } else {
+      setHistoryFeedback({ kind: 'err', text: res.error })
+    }
   }
 
   const onRemoveHistory = async (id: string) => {
+    setHistoryFeedback(null)
     const res = await sendMessage({ type: 'history-remove', payload: { id } })
-    if (res.ok) setHistoryList(res.data)
+    if (res.ok) {
+      setHistoryList(res.data)
+    } else {
+      setHistoryFeedback({ kind: 'err', text: res.error })
+    }
   }
 
   const onClearHistory = async () => {
-    await sendMessage({ type: 'history-clear' })
-    setHistoryList([])
+    const res = await sendMessage({ type: 'history-clear' })
+    if (res.ok) {
+      setHistoryList([])
+      setConfirmClear(false)
+      setHistoryFeedback(null)
+    } else {
+      setHistoryFeedback({ kind: 'err', text: res.error })
+    }
   }
 
   /**
@@ -170,7 +205,8 @@ export default function App() {
             type="button"
             className="pop-gear-btn"
             title="在侧边栏中打开"
-            onClick={openSidePanel}
+            aria-label="在侧边栏中打开"
+            onClick={() => void openSidePanel()}
           >
             <PanelRight size={15} />
           </button>
@@ -178,6 +214,7 @@ export default function App() {
             type="button"
             className="pop-gear-btn"
             title="打开设置"
+            aria-label="打开设置"
             onClick={() => void browser.runtime.openOptionsPage()}
           >
             <Settings2 size={15} />
@@ -185,9 +222,11 @@ export default function App() {
         </div>
       </div>
 
-      <div className="pop-tabs">
+      <div className="pop-tabs" role="tablist" aria-label="弹窗内容">
         <button
           type="button"
+          role="tab"
+          aria-selected={tab === 'status'}
           className={`pop-tab ${tab === 'status' ? 'active' : ''}`}
           onClick={() => setTab('status')}
         >
@@ -195,6 +234,8 @@ export default function App() {
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={tab === 'history'}
           className={`pop-tab ${tab === 'history' ? 'active' : ''}`}
           onClick={() => {
             setTab('history')
@@ -294,8 +335,8 @@ export default function App() {
               <div className="check-body">
                 <div className="check-head-row">
                   <strong>Anki 单词本</strong>
-                  <span className={`status-badge ${anki.kind === 'ok' ? 'status-badge-ok' : 'status-badge-bad'}`}>
-                    {anki.kind === 'ok' ? '已连接' : '未连接'}
+                  <span className={`status-badge ${anki.kind === 'ok' ? 'status-badge-ok' : anki.kind === 'checking' ? 'status-badge-wait' : 'status-badge-bad'}`}>
+                    {anki.kind === 'ok' ? '已连接' : anki.kind === 'checking' ? '检测中' : '未连接'}
                   </span>
                 </div>
                 <p>
@@ -329,12 +370,13 @@ export default function App() {
           {saveError && <p className="pop-err">{saveError}</p>}
 
           <div className="pop-footer">
-            <button className="btn" onClick={() => void browser.runtime.openOptionsPage()}>
-              打开设置页面
-            </button>
-            <button className="btn pop-sidepanel-btn" onClick={openSidePanel}>
+            <button className="btn" onClick={() => void openSidePanel()}>
               <PanelRight size={13} />
               打开浏览器侧边栏
+            </button>
+            <button className="btn pop-sidepanel-btn" onClick={() => void browser.runtime.openOptionsPage()}>
+              <Settings2 size={13} />
+              打开设置页面
             </button>
           </div>
         </>
@@ -344,15 +386,32 @@ export default function App() {
             <>
               <div className="pop-history-head-bar">
                 <span>最近查过的 {historyList.length} 条生词</span>
-                <button
-                  type="button"
-                  className="pop-history-clear-btn"
-                  onClick={() => void onClearHistory()}
-                >
-                  <Trash2 size={11} />
-                  清空
-                </button>
+                {!confirmClear && (
+                  <button
+                    type="button"
+                    className="pop-history-clear-btn"
+                    onClick={() => setConfirmClear(true)}
+                  >
+                    <Trash2 size={11} />
+                    清空
+                  </button>
+                )}
               </div>
+              {confirmClear && (
+                <div className="pop-clear-confirm" role="alert">
+                  <span>清空全部记录？</span>
+                  <button type="button" onClick={() => setConfirmClear(false)}>取消</button>
+                  <button type="button" className="danger" onClick={() => void onClearHistory()}>确认</button>
+                </div>
+              )}
+              {historyFeedback && (
+                <div
+                  className={`pop-history-feedback ${historyFeedback.kind}`}
+                  role={historyFeedback.kind === 'err' ? 'alert' : 'status'}
+                >
+                  {historyFeedback.text}
+                </div>
+              )}
               {historyList.map(item => (
                 <div key={item.id} className="pop-history-item">
                   <div className="pop-history-item-top">
@@ -364,10 +423,14 @@ export default function App() {
                         <button
                           type="button"
                           className="pop-btn-icon-sm"
-                          title="存入 Anki"
+                          title={historyBusy === item.id ? '正在保存' : '存入 Anki'}
+                          aria-label={`将 ${item.word} 存入 Anki`}
+                          disabled={historyBusy !== null}
                           onClick={() => void onSaveHistoryItem(item)}
                         >
-                          <Check size={12} />
+                          {historyBusy === item.id
+                            ? <LoaderCircle className="pop-spin" size={12} />
+                            : <Check size={12} />}
                         </button>
                       )}
                       {isTtsSupported() && (
@@ -375,6 +438,7 @@ export default function App() {
                           type="button"
                           className="pop-btn-icon-sm"
                           title="发音"
+                          aria-label={`朗读 ${item.word}`}
                           onClick={() => onSpeakWord(item.word)}
                         >
                           <Volume2 size={12} />
@@ -384,6 +448,7 @@ export default function App() {
                         type="button"
                         className="pop-btn-icon-sm"
                         title="删除"
+                        aria-label={`删除 ${item.word}`}
                         onClick={() => void onRemoveHistory(item.id)}
                       >
                         <Trash2 size={11} />
@@ -395,7 +460,10 @@ export default function App() {
               ))}
             </>
           ) : (
-            <div className="pop-empty">暂无查词历史记录</div>
+            <div className="pop-empty">
+              <strong>还没有查词记录</strong>
+              <span>在网页中划选单词后，最近结果会出现在这里。</span>
+            </div>
           )}
         </div>
       )}

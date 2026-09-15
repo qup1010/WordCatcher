@@ -220,6 +220,7 @@ body {
 }
 
 .save-note-show { opacity: 1; }
+.save-note-error { color: var(--danger); }
 
 /* ── 主内容 ───────────────────────────────────── */
 

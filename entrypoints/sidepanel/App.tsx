@@ -1,17 +1,14 @@
 import {
-  BookOpen,
+  AlertCircle,
   Check,
-  Clock,
-  ExternalLink,
-  History,
-  RotateCcw,
+  LoaderCircle,
   Search,
   Settings2,
   Sparkles,
   Trash2,
   Volume2,
 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { browser } from '#imports'
 import { openEntryStream, sendMessage } from '@/lib/messaging'
 import { getSettings, watchSettings } from '@/lib/settings'
@@ -38,10 +35,22 @@ export default function App() {
   const [historyList, setHistoryList] = useState<HistoryItem[]>([])
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'queued'>('idle')
   const [currentSentence, setCurrentSentence] = useState<string>('')
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const lookupSequence = useRef(0)
+  const cancelStream = useRef<(() => void) | null>(null)
 
   const refreshHistory = useCallback(async () => {
     const res = await sendMessage({ type: 'history-list' })
-    if (res.ok) setHistoryList(res.data)
+    if (res.ok) {
+      setHistoryList(res.data)
+      setHistoryError(null)
+    } else {
+      setHistoryError(res.error)
+    }
   }, [])
 
   useEffect(() => {
@@ -60,18 +69,39 @@ export default function App() {
     }
     browser.runtime.onMessage.addListener(onMessage)
 
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const isEditing = target?.matches('input, textarea, select, [contenteditable="true"]')
+      if (event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditing) {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+
     return () => {
+      cancelStream.current?.()
       stopWatch()
       browser.runtime.onMessage.removeListener(onMessage)
+      document.removeEventListener('keydown', onKeyDown)
     }
   }, [refreshHistory])
 
   const doLookup = async (text: string, sentence?: string) => {
     const w = text.trim()
     if (!w) return
+    const sequence = ++lookupSequence.current
+    cancelStream.current?.()
+    cancelStream.current = null
     setLoading(true)
+    setLookupError(null)
+    setSaveError(null)
     setSaveState('idle')
     setTab('current')
+    setEntry(null)
+    // 手动查询必须清掉上一次从网页同步来的语境，避免存卡时串句。
+    setCurrentSentence(sentence ?? '')
 
     // 先走快速翻译与本地词典
     const res = await sendMessage({
@@ -82,6 +112,7 @@ export default function App() {
       },
     })
 
+    if (sequence !== lookupSequence.current) return
     setLoading(false)
 
     if (res.ok) {
@@ -109,19 +140,26 @@ export default function App() {
         })
       }
       void refreshHistory()
+    } else {
+      setLookupError(res.error)
     }
   }
 
   const doAiLookup = () => {
     const w = (entry?.word || query).trim()
     if (!w) return
+    const sequence = ++lookupSequence.current
+    cancelStream.current?.()
     setLoading(true)
+    setLookupError(null)
+    setSaveError(null)
     setSaveState('idle')
 
-    openEntryStream(
+    cancelStream.current = openEntryStream(
       { selection: w, sentence: currentSentence || w },
       {
         onPartial: (p) => {
+          if (sequence !== lookupSequence.current) return
           setEntry(prev => ({
             word: p.word || w,
             reading: p.reading || prev?.reading || '',
@@ -132,12 +170,17 @@ export default function App() {
           }))
         },
         onDone: (doneEntry) => {
+          if (sequence !== lookupSequence.current) return
+          cancelStream.current = null
           setEntry(doneEntry)
           setLoading(false)
           void refreshHistory()
         },
-        onError: () => {
+        onError: (message) => {
+          if (sequence !== lookupSequence.current) return
+          cancelStream.current = null
           setLoading(false)
+          setLookupError(message)
         },
       },
     )
@@ -145,6 +188,7 @@ export default function App() {
 
   const onSave = async () => {
     if (!entry) return
+    setSaveError(null)
     setSaveState('saving')
     const res = await sendMessage({
       type: 'save-card',
@@ -164,6 +208,7 @@ export default function App() {
       void refreshHistory()
     } else {
       setSaveState('idle')
+      setSaveError(res.error)
     }
   }
 
@@ -187,18 +232,31 @@ export default function App() {
     setCurrentSentence(item.sentence || '')
     setQuery(item.word)
     setSaveState(item.savedToAnki ? 'saved' : 'idle')
+    setLookupError(null)
+    setSaveError(null)
     setTab('current')
   }
 
   const onRemoveHistoryItem = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     const res = await sendMessage({ type: 'history-remove', payload: { id } })
-    if (res.ok) setHistoryList(res.data)
+    if (res.ok) {
+      setHistoryList(res.data)
+      setHistoryError(null)
+    } else {
+      setHistoryError(res.error)
+    }
   }
 
   const onClearHistory = async () => {
-    await sendMessage({ type: 'history-clear' })
-    setHistoryList([])
+    const res = await sendMessage({ type: 'history-clear' })
+    if (res.ok) {
+      setHistoryList([])
+      setHistoryError(null)
+      setConfirmClear(false)
+    } else {
+      setHistoryError(res.error)
+    }
   }
 
   return (
@@ -211,6 +269,7 @@ export default function App() {
               type="button"
               className="sp-btn-icon"
               title="设置"
+              aria-label="打开设置"
               onClick={() => void browser.runtime.openOptionsPage()}
             >
               <Settings2 size={15} />
@@ -227,22 +286,30 @@ export default function App() {
         >
           <div className="sp-search-input-wrap">
             <Search size={14} className="sp-search-icon" />
+            <label className="sp-sr-only" htmlFor="sidepanel-search">查询单词或短语</label>
             <input
+              id="sidepanel-search"
+              ref={searchInputRef}
               type="text"
               className="sp-search-input"
               placeholder="输入单词或短语查词..."
               value={query}
               onChange={e => setQuery(e.target.value)}
+              aria-keyshortcuts="/"
             />
+            {!query && <kbd className="sp-search-shortcut" aria-hidden>/</kbd>}
           </div>
-          <button type="submit" className="sp-search-btn" disabled={loading}>
+          <button type="submit" className="sp-search-btn" disabled={loading || !query.trim()}>
+            {loading && <LoaderCircle className="sp-spin" size={13} />}
             {loading ? '查询中' : '查询'}
           </button>
         </form>
 
-        <div className="sp-nav-tabs">
+        <div className="sp-nav-tabs" role="tablist" aria-label="侧边栏内容">
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === 'current'}
             className={`sp-tab ${tab === 'current' ? 'active' : ''}`}
             onClick={() => setTab('current')}
           >
@@ -250,6 +317,8 @@ export default function App() {
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === 'history'}
             className={`sp-tab ${tab === 'history' ? 'active' : ''}`}
             onClick={() => {
               setTab('history')
@@ -264,7 +333,7 @@ export default function App() {
       <main className="sp-content">
         {tab === 'current' ? (
           entry ? (
-            <div className="sp-card">
+            <div className="sp-card" aria-busy={loading}>
               <div className="sp-card-head">
                 <div className="sp-card-word-wrap">
                   <span className="sp-card-word">{entry.word}</span>
@@ -274,6 +343,7 @@ export default function App() {
                       type="button"
                       className="sp-btn-icon"
                       title="朗读"
+                      aria-label={`朗读 ${entry.word}`}
                       onClick={() => onSpeak(entry.word)}
                     >
                       <Volume2 size={15} />
@@ -300,11 +370,25 @@ export default function App() {
                 </div>
               )}
 
+              {loading && (
+                <div className="sp-progress" role="status">
+                  <LoaderCircle className="sp-spin" size={14} />
+                  正在结合语境生成更完整的释义…
+                </div>
+              )}
+
+              {lookupError && (
+                <div className="sp-inline-error" role="alert">
+                  <AlertCircle size={14} />
+                  <span>{lookupError}</span>
+                </div>
+              )}
+
               <div className="sp-card-actions">
                 <button
                   type="button"
                   className="sp-btn-save"
-                  disabled={saveState === 'saving' || saveState === 'saved'}
+                  disabled={saveState !== 'idle'}
                   onClick={() => void onSave()}
                 >
                   {saveState === 'saving' && '保存中...'}
@@ -334,33 +418,69 @@ export default function App() {
                   AI 释义
                 </button>
               </div>
+              {saveError && <div className="sp-inline-error" role="alert"><AlertCircle size={14} /><span>{saveError}</span></div>}
+            </div>
+          ) : loading ? (
+            <div className="sp-state" role="status">
+              <LoaderCircle className="sp-spin" size={20} />
+              <strong>正在查询「{query.trim()}」</strong>
+              <span>会优先使用本地词典，再自动补充翻译结果。</span>
+            </div>
+          ) : lookupError ? (
+            <div className="sp-state sp-state-error" role="alert">
+              <AlertCircle size={20} />
+              <strong>这次没有查到结果</strong>
+              <span>{lookupError}</span>
+              <div className="sp-state-actions">
+                <button type="button" className="sp-btn-save" onClick={() => void doLookup(query, currentSentence || undefined)}>重试</button>
+                <button type="button" className="sp-btn-subtle" onClick={() => void browser.runtime.openOptionsPage()}>检查设置</button>
+              </div>
             </div>
           ) : (
-            <div className="sp-empty">
-              在上方输入单词查询，或在任意网页划选单词即可在此联动展示。
+            <div className="sp-state">
+              <Search size={20} />
+              <strong>查一个正在阅读的词</strong>
+              <span>在上方输入单词，或在网页中划词后打开侧边栏。按 <kbd>/</kbd> 可快速聚焦搜索框。</span>
             </div>
           )
         ) : (
           <div className="sp-history-wrap">
             {historyList.length > 0 ? (
               <>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-                  <button
-                    type="button"
-                    className="sp-btn-subtle"
-                    style={{ fontSize: 11, padding: '3px 8px' }}
-                    onClick={() => void onClearHistory()}
-                  >
-                    <Trash2 size={12} />
-                    清空历史
-                  </button>
+                <div className="sp-history-toolbar">
+                  {confirmClear ? (
+                    <div className="sp-clear-confirm" role="alert">
+                      <span>清空全部 {historyList.length} 条记录？</span>
+                      <button type="button" className="sp-btn-text" onClick={() => setConfirmClear(false)}>取消</button>
+                      <button type="button" className="sp-btn-text sp-btn-text-danger" onClick={() => void onClearHistory()}>确认清空</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="sp-btn-subtle sp-btn-compact"
+                      onClick={() => setConfirmClear(true)}
+                    >
+                      <Trash2 size={12} />
+                      清空历史
+                    </button>
+                  )}
                 </div>
+                {historyError && <div className="sp-inline-error sp-history-error" role="alert"><AlertCircle size={14} /><span>{historyError}</span></div>}
                 <div className="sp-history-list">
                   {historyList.map(item => (
                     <div
                       key={item.id}
                       className="sp-history-item"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onSelectHistory(item)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onSelectHistory(item)
+                        }
+                      }}
                     >
                       <div className="sp-history-head">
                         <span className="sp-history-word">{item.word}</span>
@@ -374,6 +494,7 @@ export default function App() {
                             className="sp-btn-icon"
                             style={{ width: 20, height: 20 }}
                             title="删除"
+                            aria-label={`从历史记录删除 ${item.word}`}
                             onClick={e => void onRemoveHistoryItem(e, item.id)}
                           >
                             <Trash2 size={12} />
@@ -386,7 +507,11 @@ export default function App() {
                 </div>
               </>
             ) : (
-              <div className="sp-empty">暂无查词历史记录</div>
+              <div className="sp-state">
+                <Search size={20} />
+                <strong>还没有查词记录</strong>
+                <span>查询过的词会保存在这里，方便再次查看和存入 Anki。</span>
+              </div>
             )}
           </div>
         )}
