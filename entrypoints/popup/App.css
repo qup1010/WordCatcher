@@ -478,3 +478,25 @@
 .pop-sidepanel-btn:hover {
   background: var(--bg-hover, rgba(0,0,0,0.05));
 }
+
+/* 窄面板的品牌、状态和操作层级。 */
+.pop { width: 336px; max-height: 600px; overflow-y: auto; padding: 18px; }
+.pop-brand-left { flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+.pop-word { font-size: 21px; }
+.pop-reading { font-size: 11px; }
+.pop-gear-btn, .pop-btn-icon-sm { min-width: 28px; min-height: 28px; flex-shrink: 0; }
+.pop-tabs { background: var(--sunken); }
+.pop-tab { min-height: 32px; font-family: inherit; font-size: 12px; color: var(--ink-soft); }
+.checks { gap: 16px; }
+.checks p { word-break: normal; overflow-wrap: anywhere; }
+.chip { min-height: 26px; }
+.pop-history-wrap { max-height: 420px; gap: 0; }
+.pop-history-item { border: 0; border-bottom: 1px solid var(--hairline); border-radius: 0; background: transparent; padding: 12px 0; }
+.pop-history-word { font-family: var(--font-serif); font-size: 16px; overflow-wrap: anywhere; min-width: 0; }
+.pop-history-item-top { gap: 8px; }
+.pop-history-actions { flex-shrink: 0; }
+.pop-history-def { color: var(--ink-soft); font-size: 12px; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.pop-blank { display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+.btn { min-height: 36px; }
+.btn:disabled { opacity: .6; cursor: wait; }
+.pop-footer { border-top-style: solid; }

@@ -107,3 +107,17 @@ pnpm build
 * 本扩展自身源码遵循 **[MIT License](LICENSE)** 开源协议。
 
 **友情链接** · [**LINUX DO**](https://linux.do/)
+
+
+## 界面交互预览
+
+运行 `pnpm preview:interactive`，打开本地地址 `http://127.0.0.1:18788/preview/interactive.html`。
+
+- `?view=popup`：图标弹窗。
+- `?view=sidepanel`：侧边栏，可输入查询、查看历史和体验 AI 生成状态。
+- `?view=options`：完整设置页，支持修改与自动保存反馈。
+- `?view=content`：示例阅读网页，划选英文即可打开真实划词面板。
+
+添加 `&scenario=offline` 查看离线状态；`history-error`、`load-error`、`save-error` 分别演示记录加载失败、设置读取失败和首次保存失败。设置保存失败后可点击重试恢复。
+
+预览使用真实 React 组件，但配置和服务全部由内存示例数据提供，不会读取个人配置、访问 AI 接口或写入真实 Anki。网络、权限、扩展后台和 Anki 实际连接仍需在安装后的插件中验收。静态样式预览继续使用 `pnpm preview`。

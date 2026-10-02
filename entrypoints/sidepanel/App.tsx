@@ -13,6 +13,7 @@ import { browser } from '#imports'
 import { openEntryStream, sendMessage } from '@/lib/messaging'
 import { getSettings, watchSettings } from '@/lib/settings'
 import { isTtsSupported, speak } from '@/lib/tts'
+import { navigateTabs } from '@/lib/ui-keyboard'
 import { DEFAULT_SETTINGS, type HistoryItem, type Settings, type WordEntry } from '@/lib/types'
 
 function formatRelativeTime(ts: number): string {
@@ -187,7 +188,8 @@ export default function App() {
   }
 
   const onSave = async () => {
-    if (!entry) return
+    if (!entry || loading || saveState !== 'idle') return
+    const sequence = lookupSequence.current
     setSaveError(null)
     setSaveState('saving')
     const res = await sendMessage({
@@ -203,6 +205,7 @@ export default function App() {
       },
     })
 
+    if (sequence !== lookupSequence.current) return
     if (res.ok) {
       setSaveState(res.data.queued ? 'queued' : 'saved')
       void refreshHistory()
@@ -222,6 +225,10 @@ export default function App() {
   }
 
   const onSelectHistory = (item: HistoryItem) => {
+    ++lookupSequence.current
+    cancelStream.current?.()
+    cancelStream.current = null
+    setLoading(false)
     setEntry({
       word: item.word,
       reading: item.reading || '',
@@ -281,22 +288,30 @@ export default function App() {
           className="sp-search-bar"
           onSubmit={(e) => {
             e.preventDefault()
-            void doLookup(query)
+            if (!loading && query.trim()) void doLookup(query)
           }}
         >
           <div className="sp-search-input-wrap">
             <Search size={14} className="sp-search-icon" />
-            <label className="sp-sr-only" htmlFor="sidepanel-search">查询单词或短语</label>
+            <label className="sp-sr-only" htmlFor="sidepanel-search">查询单词、短语或句子</label>
             <input
               id="sidepanel-search"
               ref={searchInputRef}
               type="text"
               className="sp-search-input"
-              placeholder="输入单词或短语查词..."
+              placeholder="输入单词、短语或句子"
+              autoComplete="off"
+              spellCheck={false}
+              onKeyDown={event => {
+                if (event.nativeEvent.isComposing && event.key === 'Enter') event.preventDefault()
+                if (event.key === 'Escape') { event.preventDefault(); setQuery('') }
+              }}
               value={query}
               onChange={e => setQuery(e.target.value)}
               aria-keyshortcuts="/"
             />
+            {query && <button type="button" className="sp-search-clear sp-btn-icon" aria-label="清空查询" title="清空查询（Esc）"
+              onClick={() => { setQuery(''); searchInputRef.current?.focus() }}>×</button>}
             {!query && <kbd className="sp-search-shortcut" aria-hidden>/</kbd>}
           </div>
           <button type="submit" className="sp-search-btn" disabled={loading || !query.trim()}>
@@ -305,11 +320,12 @@ export default function App() {
           </button>
         </form>
 
-        <div className="sp-nav-tabs" role="tablist" aria-label="侧边栏内容">
+        <div className="sp-nav-tabs" onKeyDown={navigateTabs} role="tablist" aria-label="侧边栏内容">
           <button
             type="button"
             role="tab"
             aria-selected={tab === 'current'}
+            tabIndex={tab === 'current' ? 0 : -1}
             className={`sp-tab ${tab === 'current' ? 'active' : ''}`}
             onClick={() => setTab('current')}
           >
@@ -319,6 +335,7 @@ export default function App() {
             type="button"
             role="tab"
             aria-selected={tab === 'history'}
+            tabIndex={tab === 'history' ? 0 : -1}
             className={`sp-tab ${tab === 'history' ? 'active' : ''}`}
             onClick={() => {
               setTab('history')
@@ -357,7 +374,8 @@ export default function App() {
 
               {entry.memoryHook && (
                 <div className="sp-hook">
-                  💡 记忆线索：{entry.memoryHook}
+                  <strong>记忆线索</strong>
+                  <div>{entry.memoryHook}</div>
                 </div>
               )}
 
@@ -388,10 +406,10 @@ export default function App() {
                 <button
                   type="button"
                   className="sp-btn-save"
-                  disabled={saveState !== 'idle'}
+                  disabled={loading || saveState !== 'idle'}
                   onClick={() => void onSave()}
                 >
-                  {saveState === 'saving' && '保存中...'}
+                  {saveState === 'saving' && '保存中…'}
                   {saveState === 'saved' && (
                     <>
                       <Check size={13} />
@@ -401,7 +419,7 @@ export default function App() {
                   {saveState === 'queued' && (
                     <>
                       <Check size={13} />
-                      已排队暂存
+                      已暂存，待同步
                     </>
                   )}
                   {saveState === 'idle' && '存入 Anki'}
@@ -445,6 +463,9 @@ export default function App() {
           )
         ) : (
           <div className="sp-history-wrap">
+            {historyError && <div className="sp-inline-error sp-history-error" role="alert"><AlertCircle size={14} />
+              <span>{historyError}</span><button type="button" className="sp-btn-text" onClick={() => void refreshHistory()}>重试</button>
+            </div>}
             {historyList.length > 0 ? (
               <>
                 <div className="sp-history-toolbar">
@@ -465,7 +486,6 @@ export default function App() {
                     </button>
                   )}
                 </div>
-                {historyError && <div className="sp-inline-error sp-history-error" role="alert"><AlertCircle size={14} /><span>{historyError}</span></div>}
                 <div className="sp-history-list">
                   {historyList.map(item => (
                     <div
@@ -486,7 +506,7 @@ export default function App() {
                         <span className="sp-history-word">{item.word}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           {item.savedToAnki && (
-                            <span className="sp-history-badge-ok">已入 Anki</span>
+                            <span className="sp-history-badge-ok">已存入 Anki</span>
                           )}
                           <span className="sp-history-time">{formatRelativeTime(item.timestamp)}</span>
                           <button
@@ -506,13 +526,13 @@ export default function App() {
                   ))}
                 </div>
               </>
-            ) : (
+            ) : !historyError ? (
               <div className="sp-state">
                 <Search size={20} />
                 <strong>还没有查词记录</strong>
                 <span>查询过的词会保存在这里，方便再次查看和存入 Anki。</span>
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </main>

@@ -1,3 +1,4 @@
+import { browser } from '#imports'
 import { ExternalLink, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react'
 import { Section } from '../components/Section'
 import type { SectionProps } from './types'
@@ -27,7 +28,7 @@ export function AboutSection(_props: SectionProps) {
     <Section
       id="sec-about"
       index={6}
-      title="关于本插件"
+      title="关于 Word Catcher"
       intro={<>Word Catcher 是一个开源的网页划词查词与 Anki 快速联动扩展。</>}
     >
       <div className="about-card" style={{
@@ -43,7 +44,7 @@ export function AboutSection(_props: SectionProps) {
               Word Catcher <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--teal)', fontFamily: 'var(--font-sans)', background: 'var(--teal-wash)', padding: '2px 8px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hairline)', marginLeft: 6 }}>v{version}</span>
             </div>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
-              聚焦真实阅读流：提供即时机翻、本地离线词库与 AI 语境释义，并支持一键将生词、例句及记忆线索同步至本地 Anki 单词本。
+              阅读时查词，保存词义与原句，随后在 Anki 中复习。
             </p>
           </div>
         </div>

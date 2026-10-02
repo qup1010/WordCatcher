@@ -12,6 +12,8 @@
  */
 
 :root, .wc-root {
+  --native-scheme: light;
+  color-scheme: var(--native-scheme);
   /* ── 表面：三层，从后往前 ── */
   /** 页面底色，卡片后面那一层 */
   --paper: #faf8f3;
@@ -23,7 +25,7 @@
   /* ── 墨色：三级对比度 ── */
   --ink: #221f1a;
   --ink-soft: #6d675d;
-  --ink-faint: #a39c8f;
+  --ink-faint: #81796c;
   --hairline: #e8e3d9;
 
   /* ── 强调 ── */
@@ -66,13 +68,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root, .wc-root {
+    --native-scheme: dark;
     --paper: #1d1b18;
     --card: #23211d;
     --sunken: #2d2a25;
 
     --ink: #ece7dd;
     --ink-soft: #a89f90;
-    --ink-faint: #776f61;
+    --ink-faint: #9c9384;
     --hairline: #3a362e;
 
     --teal: #4fd1bb;

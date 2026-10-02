@@ -114,7 +114,7 @@ export function DataSection({ s, onChange }: SectionProps) {
       id="sec-data"
       index={5}
       title="数据与维护"
-      intro="待写队列、AI 缓存和配置备份。平时不用管，出问题或者换机器时才需要。"
+      intro="查看待同步卡片、清理缓存或备份配置。"
     >
       {/* ── 待写队列 ── */}
       <div className="block">
@@ -124,11 +124,11 @@ export function DataSection({ s, onChange }: SectionProps) {
           {queue.length > 0 && <span className="chip">{queue.length}</span>}
         </div>
         <p className="block-hint">
-          Anki 没开的时候存的词会先排在这里，等 Anki 起来了一次性补写，不会丢。
+          Anki 未连接时，卡片会暂存在这里。打开 Anki 后可继续同步。
         </p>
 
         {queue.length === 0
-          ? <p className="empty">队列是空的。</p>
+          ? <p className="empty">没有待同步的卡片。</p>
           : (
               <>
                 <ul className="queue-list">

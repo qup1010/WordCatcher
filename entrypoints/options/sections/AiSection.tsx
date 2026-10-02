@@ -126,7 +126,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
       id="sec-ai"
       index={0}
       title="AI 接口"
-      intro="结合具体句子语境理解生词、还原原形并翻译整句。支持任何兼容 OpenAI 格式的模型接口。"
+      intro="结合原句解释词义并翻译整句。填写兼容 OpenAI 格式的接口配置。"
     >
       <div className="profiles">
         {s.ai.profiles.map(p => (

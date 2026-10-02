@@ -9,7 +9,7 @@ export function MtSection({ s, onChange }: SectionProps) {
       id="sec-mt"
       index={1}
       title="快速翻译"
-      intro={<>划词后点击 <Zap size={13} className="inline-icon" /> 触发即时翻译，免配置且不消耗 AI 额度。长句或离线词典未收录词将自动调用此处的在线服务。</>}
+      intro={<>划词后点击 <Zap size={13} className="inline-icon" /> 进行快速翻译，无需 AI 配置。长句和词典未收录的词使用在线服务。</>}
     >
       <div className="field">
         <span>首选翻译服务</span>
@@ -22,7 +22,7 @@ export function MtSection({ s, onChange }: SectionProps) {
           onChange={provider => onChange({ ...s, mt: { ...s.mt, provider } })}
         />
       </div>
-      <p className="hint">微软翻译在国内网络环境更稳定；首选服务网络异常时会自动平滑切换至另一家。</p>
+      <p className="hint">首选服务连接失败时，会自动尝试另一家翻译服务。</p>
     </Section>
   )
 }

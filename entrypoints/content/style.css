@@ -16,6 +16,7 @@
    * 里的令牌照常生效。
    */
   all: initial;
+  color-scheme: var(--native-scheme);
 
   font-family: var(--font-sans);
   font-size: 14px;
@@ -950,3 +951,15 @@
 
   .wc-btn:active { transform: none; }
 }
+
+/* 交互焦点与长内容适配。 */
+.wc-root button:focus-visible, .wc-def-editable:focus-visible, .wc-def-textarea:focus-visible {
+  outline: 2px solid var(--teal); outline-offset: 2px;
+}
+.wc-panel { max-width: calc(100vw - 24px); }
+.wc-head-main, .wc-word-wrap { min-width: 0; }
+.wc-word, .wc-def, .wc-error, .wc-hook-body { overflow-wrap: anywhere; }
+.wc-head-actions { flex-shrink: 0; }
+.wc-head-btn, .wc-speak { min-width: 28px; min-height: 28px; }
+.wc-actions { flex-wrap: wrap; row-gap: 8px; }
+.wc-btn { min-height: 34px; }

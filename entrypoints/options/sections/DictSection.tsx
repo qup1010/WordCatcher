@@ -121,7 +121,7 @@ export function DictSection({ s, onChange }: SectionProps) {
       id="sec-dict"
       index={2}
       title="离线词典"
-      intro={<>基于开源 Open Dictionary，在本地 IndexedDB 提供线快速查词。</>}
+      intro={<>安装 Open Dictionary 词库后，可在本地离线查词。</>}
     >
       <div className="field">
         <span>启用离线词库</span>
@@ -130,7 +130,7 @@ export function DictSection({ s, onChange }: SectionProps) {
           onChange={enabled => onChange({ ...s, dict: { ...s.dict, downloadUrl, enabled } })}
         />
       </div>
-      <p className="hint">开启后，划选单个英文单词将优先检索本地离线词典；未收录词或长句自动平滑回退至机翻。</p>
+      <p className="hint">单个英文单词优先查本地词典；未收录的词和长句使用在线翻译。</p>
 
       <div className="field" style={{ marginTop: 16 }}>
         <span>词库状态</span>
@@ -210,7 +210,7 @@ export function DictSection({ s, onChange }: SectionProps) {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <Upload size={14} />
-              <span>从本地文件导入 (.gz / .jsonl)</span>
+              <span>导入词库文件</span>
             </button>
           </>
         )}

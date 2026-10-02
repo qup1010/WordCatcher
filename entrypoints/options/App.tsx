@@ -1,4 +1,5 @@
 import { AlertCircle, BookOpen, Check, Database, Info, Layers, Sparkles, Volume2, Zap } from 'lucide-react'
+import { browser } from '#imports'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sendMessage } from '@/lib/messaging'
 import type { DictMeta } from '@/lib/open-dict/types'
@@ -30,11 +31,28 @@ const NAV_SECTIONS = [
 export default function App() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [ankiAlive, setAnkiAlive] = useState<boolean | null>(null)
   const [dictMeta, setDictMeta] = useState<DictMeta | null>(null)
   const [activeNav, setActiveNav] = useState<string>(NAV_SECTIONS[0].id)
   const firstRender = useRef(true)
+  const writeQueue = useRef<Promise<void>>(Promise.resolve())
+  const writeSequence = useRef(0)
+
+  // 顺序写入，避免快速连续修改时较早的配置覆盖较新的配置。
+  const persist = useCallback((next: Settings) => {
+    const sequence = ++writeSequence.current
+    setSaveState('saving')
+    const task = writeQueue.current.catch(() => {}).then(() => saveSettings(next))
+    writeQueue.current = task
+    void task.then(() => {
+      if (sequence === writeSequence.current) setSaveState('saved')
+    }, () => {
+      if (sequence === writeSequence.current) setSaveState('error')
+    })
+    return task
+  }, [])
 
   const refreshStatuses = () => {
     // 静默探测 Anki 与离线词库状态
@@ -46,28 +64,16 @@ export default function App() {
     void getSettings().then((v) => {
       setS(v)
       setLoaded(true)
-    })
+    }).catch(() => setLoadError(true))
     refreshStatuses()
   }, [])
 
-  // 自动保存：改动后 400ms 落盘，不需要手动点保存
+  // 修改立即开始保存，取消等待窗口；保存结果只反馈最新一次修改。
   useEffect(() => {
     if (!loaded) return
-    if (firstRender.current) {
-      firstRender.current = false
-      return
-    }
-    setSaveState('saving')
-    const t = setTimeout(() => {
-      void saveSettings(s)
-        .then(() => {
-          setSaveState('saved')
-          setTimeout(() => setSaveState('idle'), 1600)
-        })
-        .catch(() => setSaveState('error'))
-    }, 400)
-    return () => clearTimeout(t)
-  }, [s, loaded])
+    if (firstRender.current) { firstRender.current = false; return }
+    void persist(s).catch(() => {})
+  }, [s, loaded, persist])
 
   // 滚动时高亮侧边栏当前分区
   useEffect(() => {
@@ -89,13 +95,16 @@ export default function App() {
 
   // 测试/拉取前先落盘，保证 background 用的是页面上正在填的值
   const flush = useCallback(async () => {
-    await saveSettings(s)
-  }, [s])
+    await persist(s)
+  }, [s, persist])
 
   const aiReady = isAiConfigured(s)
   const dictReady = dictMeta?.status === 'ready' && dictMeta.entryCount > 0
 
-  if (!loaded) return null
+  if (!loaded) return <div className="settings-loading" role={loadError ? 'alert' : 'status'}>
+    <strong>{loadError ? '无法读取设置' : '正在加载设置…'}</strong>
+    {loadError && <button type="button" className="save-retry" onClick={() => window.location.reload()}>重新加载</button>}
+  </div>
 
   const sectionProps = { s, onChange: setS, flush }
 
@@ -114,18 +123,19 @@ export default function App() {
             <span className="brand-reading">/wɜːd ˈkætʃə(r)/</span>
             <span className="brand-pos">n.</span>
           </div>
-          <p className="brand-def">网页划词，离线词典/快译或 AI 语境释义，一键存入 Anki 单词本。</p>
+          <p className="brand-def">网页查词与语境释义，随手存入 Anki。</p>
         </div>
 
-        <nav>
+        <nav aria-label="设置分区">
           {NAV_SECTIONS.map(({ id, label, icon: Icon }) => (
             <a
               key={id}
               href={`#${id}`}
+              aria-current={activeNav === id ? 'location' : undefined}
               className={`nav-item ${activeNav === id ? 'nav-on' : ''}`}
               onClick={(e) => {
                 e.preventDefault()
-                document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' })
               }}
             >
               <Icon size={15} className="nav-icon" />
@@ -160,7 +170,8 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`save-note ${saveState !== 'idle' ? 'save-note-show' : ''} ${saveState === 'error' ? 'save-note-error' : ''}`}>
+          <div role={saveState === 'error' ? 'alert' : 'status'} className={`save-note save-note-show ${saveState === 'error' ? 'save-note-error' : ''}`}>
+            {saveState === 'idle' && <span>修改后自动保存</span>}
             {saveState === 'saving' && <span>保存中…</span>}
             {saveState === 'saved' && (
               <>
@@ -171,7 +182,8 @@ export default function App() {
             {saveState === 'error' && (
               <>
                 <AlertCircle size={12} />
-                <span>自动保存失败，请再修改一次重试</span>
+                <span>保存失败</span>
+                <button type="button" className="save-retry" onClick={() => void persist(s).catch(() => {})}>重试保存</button>
               </>
             )}
           </div>
@@ -188,7 +200,7 @@ export default function App() {
         <DataSection {...sectionProps} />
         <AboutSection {...sectionProps} />
 
-        <p className="foot-note">设置修改后自动保存并立即生效。</p>
+        <p className="foot-note">修改会自动保存；显示「已自动保存」后生效。</p>
       </main>
     </div>
   )

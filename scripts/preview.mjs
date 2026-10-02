@@ -31,6 +31,7 @@ const CSS_ROUTES = {
   'content.css': ['content-scripts', 'content.css'],
   'options.css': ['assets', /^options-.*\.css$/],
   'popup.css': ['assets', /^popup-.*\.css$/],
+  'sidepanel.css': ['assets', /^sidepanel-.*\.css$/],
 }
 
 async function resolveCss() {

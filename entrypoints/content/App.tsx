@@ -11,6 +11,7 @@ import { place } from '@/lib/placement'
 import { type SelectionContext, extractContext } from '@/lib/selection-context'
 import { getSettings, watchSettings } from '@/lib/settings'
 import { isTtsSupported, speak, stopSpeaking } from '@/lib/tts'
+import { canUseLookupShortcut } from '@/lib/ui-keyboard'
 import { DEFAULT_SETTINGS, type Settings, type WordEntry } from '@/lib/types'
 
 const PANEL_WIDTH = 372
@@ -64,7 +65,7 @@ function Dots() {
 }
 
 /**
- * AI 详解的加载占位。
+ * AI 释义的加载占位。
  *
  * 用词条的真实形状（词头 / 释义 / 引用块）而不是转圈：等待 2-5 秒时，
  * 让用户先看到"结果会长这样"，体感比一个孤零零的进度指示快得多，
@@ -104,6 +105,7 @@ function Skeleton({ onStartDrag, pinned, onTogglePin, onClose, onOpenSidePanel }
               type="button"
               className="wc-head-btn"
               title="在浏览器侧边栏中打开"
+              aria-label="打开侧边栏"
               onClick={onOpenSidePanel}
             >
               <PanelRight size={13} />
@@ -114,6 +116,7 @@ function Skeleton({ onStartDrag, pinned, onTogglePin, onClose, onOpenSidePanel }
               type="button"
               className="wc-head-btn wc-head-btn-close"
               title="关闭 (Esc)"
+              aria-label="关闭词条面板"
               onClick={onClose}
             >
               <X size={14} />
@@ -204,6 +207,7 @@ function EntryBody({
               type="button"
               className="wc-speak"
               title="试听读音 (P)"
+              aria-label={`朗读 ${word}`}
               onClick={(e) => {
                 e.stopPropagation()
                 onSpeak(word)
@@ -221,6 +225,8 @@ function EntryBody({
               type="button"
               className={`wc-head-btn ${pinned ? 'wc-pinned' : ''}`}
               title={pinned ? '取消固定（点击外部可关闭）' : '固定卡片（防止点击外部关闭，划选新词时在当前位置更新）'}
+              aria-label={pinned ? '取消固定词条面板' : '固定词条面板'}
+              aria-pressed={pinned}
               onClick={(e) => {
                 e.stopPropagation()
                 onTogglePin()
@@ -235,6 +241,7 @@ function EntryBody({
               type="button"
               className="wc-head-btn"
               title="在浏览器侧边栏中打开"
+              aria-label="打开侧边栏"
               onClick={(e) => {
                 e.stopPropagation()
                 onOpenSidePanel()
@@ -248,6 +255,7 @@ function EntryBody({
               type="button"
               className="wc-head-btn wc-head-btn-close"
               title="关闭 (Esc)"
+              aria-label="关闭词条面板"
               onClick={(e) => {
                 e.stopPropagation()
                 onClose()
@@ -263,12 +271,14 @@ function EntryBody({
         <div className="wc-def-edit-wrap">
           <textarea
             className="wc-def-textarea"
-            rows={2}
+            rows={3}
+            aria-label="编辑释义"
             autoFocus
             value={defDraft}
             onChange={e => setDefDraft(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
                 e.preventDefault()
                 commitEdit()
@@ -284,6 +294,14 @@ function EntryBody({
         <div
           className={`wc-def ${!streaming ? 'wc-def-editable' : ''}`}
           title={!streaming ? '点击可微调释义' : undefined}
+          role={!streaming ? 'button' : undefined}
+          tabIndex={!streaming ? 0 : undefined}
+          aria-label={!streaming ? '编辑释义' : undefined}
+          onKeyDown={event => {
+            if (!streaming && !event.nativeEvent.isComposing && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault(); event.stopPropagation(); setEditing(true)
+            }
+          }}
           onClick={() => !streaming && setEditing(true)}
         >
           {entry.definition}
@@ -517,7 +535,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   }, [fixedPos, dragOffset, clampPos])
 
   /**
-   * 开一次 AI 详解。
+   * 开一次 AI 释义。
    *
    * 走流式：释义会逐字出现，首字通常 1 秒内就到。上一条还没结束就再划词的话，
    * 先把旧的取消掉，否则两条流会交替往同一个面板里写。
@@ -669,7 +687,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     })
   }, [phase, anchor, saveCard])
 
-  // 出结果就顺手查一次重，让「存入单词本」在用户读完释义之前就变成「已收藏」
+  // 出结果就顺手查一次重，让「存入 Anki」在用户读完释义之前就变成「已收藏」
   const dupeWord = phase.kind === 'result'
     ? phase.entry.word
     : phase.kind === 'quick' && anchor
@@ -696,12 +714,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const saveLabel = save.kind === 'saving'
     ? '保存中…'
     : saved
-      ? '已存入'
+      ? '已存入 Anki'
       : queued
-        ? '已排队'
+        ? '已暂存'
         : dupe === 'yes'
           ? '已在牌组'
-          : '存入单词本'
+          : '存入 Anki'
 
   // ── 选区监听 ──────────────────────────────────
   useEffect(() => {
@@ -785,10 +803,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
       if (phase.kind === 'hidden') return
 
-      const target = e.target as HTMLElement | null
-      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-
-      if (!isInput) {
+      if (canUseLookupShortcut(e)) {
         if (e.key === 'Enter') {
           if (phase.kind === 'result' && !saveDisabled) {
             e.preventDefault()
@@ -1129,7 +1144,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             )}
 
             {phase.kind === 'quick-error' && (
-              <div className="wc-error">{phase.message}</div>
+              <div className="wc-error" role="alert">{phase.message}</div>
             )}
 
             <div className="wc-actions wc-actions-tight">
@@ -1168,7 +1183,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             </div>
 
             {save.kind === 'failed' && (
-              <div className="wc-error" style={{ marginTop: 8 }}>{save.message}</div>
+              <div className="wc-error" role="alert" style={{ marginTop: 8 }}>{save.message}</div>
             )}
           </div>
         </div>
@@ -1227,7 +1242,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
         {phase.kind === 'error' && (
           <>
-            <div className="wc-error">{phase.message}</div>
+            <div className="wc-error" role="alert">{phase.message}</div>
             <div className="wc-actions">
               <button type="button" className="wc-btn wc-btn-primary" onClick={() => lookup(anchor.ctx)}>
                 重试
@@ -1295,13 +1310,13 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               )}
 
               {dupe === 'yes' && !saved && !queued && (
-                <span className="wc-note">读过就好，不用重复收藏</span>
+                <span className="wc-note">已在当前牌组，无需重复保存</span>
               )}
 
               {save.kind === 'queued' && (
                 <span className="wc-note wc-note-ok">
                   <Check size={13} />
-                  <span>Anki 没开，已排队（{save.pending}）</span>
+                  <span>Anki 未连接，{save.pending} 张卡片待同步</span>
                 </span>
               )}
 
@@ -1310,7 +1325,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             </div>
 
             {save.kind === 'failed' && (
-              <div className="wc-error" style={{ marginTop: 8 }}>
+              <div className="wc-error" role="alert" style={{ marginTop: 8 }}>
                 {save.message}
                 {' '}
                 <button

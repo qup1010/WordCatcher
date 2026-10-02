@@ -26,7 +26,7 @@ export function UxSection({ s, onChange }: SectionProps) {
         />
       </div>
       <p className="hint">
-        「先显示操作胶囊」按需点击；「直接快速翻译」划词即查离线词典/机翻（0 延迟零消耗）；「直接 AI 释义」每次划选均调用大模型。
+        操作胶囊让你选择快译或 AI；直接快译优先查词典；直接 AI 会在每次划选时请求模型。
       </p>
 
       <div className="field">
@@ -100,7 +100,7 @@ export function UxSection({ s, onChange }: SectionProps) {
           {LANGUAGE_PRESETS.map(l => <option key={l.label} value={l.label}>{l.label}</option>)}
         </select>
       </label>
-      <p className="hint">决定试听与 Anki 卡片朗读的主默认发音。</p>
+      <p className="hint">用于查词试听和 Anki 卡片的默认朗读语言。</p>
 
       <div className="field">
         <span>语种识别</span>

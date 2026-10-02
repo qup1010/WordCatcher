@@ -1146,3 +1146,27 @@ select:focus-visible {
 .btn-danger-soft:hover {
   opacity: 0.9;
 }
+
+/* 保存反馈与窄窗口表单。 */
+.save-note { min-height: 28px; gap: 6px; flex-wrap: wrap; }
+.save-retry { border: 0; background: transparent; color: var(--teal); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
+.settings-loading { min-height: 55vh; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; color: var(--ink-soft); }
+.settings-loading strong { color: var(--ink); }
+.side-status-card { box-shadow: none; }
+.brand-def { max-width: 28ch; }
+@media (max-width: 560px) {
+  .shell { padding: 24px 16px 48px; }
+  :root { --label-w: 0px; --field-gap: 0px; --field-indent: 0px; }
+  .field { flex-direction: column; align-items: stretch; gap: 6px; }
+  .field > span:first-child { width: auto; text-align: left; }
+  .field-top > span:first-child { padding-top: 0; }
+  .field input:not([type="range"]), .field select, .field textarea { width: 100%; }
+}
+
+@media (max-width: 860px) {
+  .save-note { position: fixed; bottom: 12px; left: 20px; right: 20px; z-index: 6; padding: 10px 14px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--card); box-shadow: var(--shadow-card); }
+}
+@media (max-width: 560px) {
+  .side nav { margin: 0 -16px; padding: 0 16px; }
+  .save-note { left: 16px; right: 16px; }
+}

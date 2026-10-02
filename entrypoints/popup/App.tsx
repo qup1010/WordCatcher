@@ -13,6 +13,7 @@ import {
   watchSettings,
 } from '@/lib/settings'
 import { isTtsSupported, speak } from '@/lib/tts'
+import { navigateTabs } from '@/lib/ui-keyboard'
 import { DEFAULT_SETTINGS, type HistoryItem, type Settings } from '@/lib/types'
 import './App.css'
 
@@ -26,6 +27,9 @@ const MT_PROVIDERS: MtProvider[] = ['microsoft', 'google']
 export default function App() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyError, setHistoryError] = useState<string | null>(null)
   const [tab, setTab] = useState<'status' | 'history'>('status')
   const [historyList, setHistoryList] = useState<HistoryItem[]>([])
   const [anki, setAnki] = useState<Probe>({ kind: 'checking' })
@@ -42,15 +46,18 @@ export default function App() {
   const [confirmClear, setConfirmClear] = useState(false)
 
   const loadHistory = useCallback(async () => {
+    setHistoryLoading(true)
     const res = await sendMessage({ type: 'history-list' })
-    if (res.ok) setHistoryList(res.data)
+    if (res.ok) { setHistoryList(res.data); setHistoryError(null) }
+    else setHistoryError(res.error)
+    setHistoryLoading(false)
   }, [])
 
   useEffect(() => {
     void getSettings().then((v) => {
       setS(v)
       setLoaded(true)
-    })
+    }).catch(() => setLoadError(true))
     // 设置页可能同时开着，跟着它一起变
     const stop = watchSettings(setS)
     void sendMessage({ type: 'check-anki' }).then(res =>
@@ -186,7 +193,10 @@ export default function App() {
   }
 
   // 读到真实配置前先不渲染，否则会闪一下默认值再跳成实际值
-  if (!loaded) return <div className="pop pop-blank" />
+  if (!loaded) return <div className="pop pop-blank" role={loadError ? 'alert' : 'status'}>
+    <strong>{loadError ? '无法读取设置' : '正在加载…'}</strong>
+    {loadError && <button type="button" className="btn" onClick={() => window.location.reload()}>重新加载</button>}
+  </div>
 
   const aiReady = isAiConfigured(s)
   const active = activeAiProfile(s)
@@ -222,11 +232,12 @@ export default function App() {
         </div>
       </div>
 
-      <div className="pop-tabs" role="tablist" aria-label="弹窗内容">
+      <div className="pop-tabs" onKeyDown={navigateTabs} role="tablist" aria-label="弹窗内容">
         <button
           type="button"
           role="tab"
           aria-selected={tab === 'status'}
+            tabIndex={tab === 'status' ? 0 : -1}
           className={`pop-tab ${tab === 'status' ? 'active' : ''}`}
           onClick={() => setTab('status')}
         >
@@ -236,6 +247,7 @@ export default function App() {
           type="button"
           role="tab"
           aria-selected={tab === 'history'}
+            tabIndex={tab === 'history' ? 0 : -1}
           className={`pop-tab ${tab === 'history' ? 'active' : ''}`}
           onClick={() => {
             setTab('history')
@@ -246,6 +258,7 @@ export default function App() {
         </button>
       </div>
 
+      {saveError && <p className="pop-err" role="alert">{saveError}</p>}
       {tab === 'status' ? (
         <>
           <ul className="checks">
@@ -256,7 +269,7 @@ export default function App() {
                 <div className="check-head-row">
                   <strong>AI 语境释义</strong>
                   <span className={`status-badge ${aiReady ? 'status-badge-ok' : 'status-badge-bad'}`}>
-                    {aiReady ? '已配置' : '未就绪'}
+                    {aiReady ? '已配置' : '未配置'}
                   </span>
                 </div>
                 {multiProfile && (
@@ -279,7 +292,7 @@ export default function App() {
                 <p>
                   {aiReady
                     ? (multiProfile ? active.model : `${active.name} · ${active.model}`)
-                    : '尚未配置 API Key'}
+                    : '可在设置中添加 AI 配置'}
                 </p>
               </div>
             </li>
@@ -325,7 +338,7 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <p>长句或未收录词自动平滑调用。</p>
+                <p>长句和词典未收录的词使用在线翻译。</p>
               </div>
             </li>
 
@@ -355,33 +368,32 @@ export default function App() {
                 <Inbox size={14} />
                 <span>{pending} 张卡片待写入 Anki</span>
               </div>
-              <p>Anki 离线时保存的生词已暂存，启动 Anki 后点击补写：</p>
+              <p>Anki 离线时保存的生词已暂存，打开 Anki 后即可同步。</p>
               <button
                 className="btn btn-quiet"
                 disabled={flush.kind === 'busy'}
                 onClick={() => void onFlush()}
               >
-                {flush.kind === 'busy' ? '写入中…' : '现在补写进 Anki'}
+                {flush.kind === 'busy' ? '写入中…' : '同步到 Anki'}
               </button>
             </div>
           )}
 
           {flush.kind === 'done' && <p className="queue-note">{flush.text}</p>}
-          {saveError && <p className="pop-err">{saveError}</p>}
 
           <div className="pop-footer">
             <button className="btn" onClick={() => void openSidePanel()}>
               <PanelRight size={13} />
-              打开浏览器侧边栏
-            </button>
-            <button className="btn pop-sidepanel-btn" onClick={() => void browser.runtime.openOptionsPage()}>
-              <Settings2 size={13} />
-              打开设置页面
+              打开侧边栏
             </button>
           </div>
         </>
       ) : (
         <div className="pop-history-wrap">
+          {historyError && <div className="pop-history-feedback err" role="alert">{historyError}
+            <button type="button" className="pop-history-clear-btn" onClick={() => void loadHistory()}>重新加载</button>
+          </div>}
+          {historyLoading && <p role="status">正在加载记录…</p>}
           {historyList.length > 0 ? (
             <>
               <div className="pop-history-head-bar">
@@ -418,7 +430,7 @@ export default function App() {
                     <span className="pop-history-word">{item.word}</span>
                     <div className="pop-history-actions">
                       {item.savedToAnki ? (
-                        <span className="pop-badge-saved">已入 Anki</span>
+                        <span className="pop-badge-saved">已存入 Anki</span>
                       ) : (
                         <button
                           type="button"
@@ -459,12 +471,12 @@ export default function App() {
                 </div>
               ))}
             </>
-          ) : (
+          ) : !historyLoading && !historyError ? (
             <div className="pop-empty">
               <strong>还没有查词记录</strong>
               <span>在网页中划选单词后，最近结果会出现在这里。</span>
             </div>
-          )}
+          ) : null}
         </div>
       )}
     </div>

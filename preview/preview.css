@@ -63,7 +63,7 @@ main section,
 
 /* popup 有固定宽度，模拟浏览器弹窗的样子 */
 .popup-frame {
-  width: 268px;
+  width: 336px;
   background: var(--card);
   border-radius: 12px;
   overflow: hidden;
