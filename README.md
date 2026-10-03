@@ -1,123 +1,154 @@
 <div align="center">
-  <img src="assets/icon.svg" width="64" height="64" alt="Word Catcher Logo" />
-  <h1>Word Catcher</h1>
-  <p>一个支持多种查词模式、快速集成 Anki 单词本的网页划词学习扩展。</p>
-
-  <p>
-    <img src="https://img.shields.io/badge/Manifest-V3-0e6f63?style=flat-square" alt="Manifest V3" />
-    <img src="https://img.shields.io/badge/Anki-Connect-b45309?style=flat-square" alt="AnkiConnect" />
-    <img src="https://img.shields.io/badge/License-MIT-gray?style=flat-square" alt="License MIT" />
-  </p>
+  <img src="assets/icon.svg" width="72" height="72" alt="Word Catcher 图标" />
+  <h1>Word Catcher · 浏览器插件</h1>
+  <p>读懂外文网页，让生词不再打断阅读。</p>
+  <p><a href="https://github.com/qup1010/WordCatcher/releases">下载插件</a> · <a href="https://github.com/qup1010/WordCatcherDesktop">Windows 桌面版</a> · <a href="https://github.com/qup1010/WordCatcher/issues">反馈问题</a></p>
 </div>
 
-<p align="center">
-  <img src="docs/showcase.png" width="100%" alt="Word Catcher Showcase" />
-</p>
+Word Catcher 是一款浏览器查词工具，适合阅读外文文章、在线文档和网页资料。词义解释与原句翻译直接呈现在当前页面，帮助你理解上下文、继续阅读；最近的查询记录也方便随时回看。
 
----
+![Word Catcher 浏览器插件：网页划词与语境详解](docs/images/showcase.png)
 
-## 💡 这个插件适合什么场景？
+## 选择适合阅读场景的版本
 
-在网页阅读英文文章或文档时，遇到生词通常有两种诉求：
-1. **快速知道意思**：不想打断阅读节奏，快速看一眼翻译或基本释义；
-2. **结合句子深入理解并记忆**：有些词在特定语境下含义特殊，需要结合原句理解，并希望顺手存进 Anki 供后续复习。
+| 产品 | 更适合的场景 | 主要用途 |
+| --- | --- | --- |
+| **浏览器插件（本项目）** | 外文文章、在线文档与网页资料 | 在当前网页理解词义和语境，回看查询记录 |
+| [Windows 桌面版](https://github.com/qup1010/WordCatcherDesktop) | PDF 文献、Word 文档与桌面阅读 | 跨应用查词，积累生词与原句 |
 
-Word Catcher 围绕这两个场景提供了灵活的查词模式与 Anki 一键存卡能力。
+两者都提供离线词典、在线快译和 AI 语境详解，可以按阅读场景搭配使用。配置、词典与本地记录各自保存，目前不会自动互通。
 
----
+## 安装插件
 
-## 🛠️ 主要功能
+### Chrome / Edge
 
-### 1. 多种查词模式，按需选择
-* **即时机翻**：划选单词或长句时直接调用在线翻译（支持微软/谷歌翻译），免配置直用，适合快速扫读；
-* **本地词库（可选）**：支持在设置中下载并接入开源词典文件（Open Dictionary），在本地快速检索词性、音标与记忆线索；
-* **AI 语境释义**：将划选词与**当前整句话**发送给大模型，解释该词在当前语境下的精确含义并翻译整句（支持 DeepSeek、OpenAI、Kimi、Ollama 等任意兼容接口）。
+1. 打开 [Releases](https://github.com/qup1010/WordCatcher/releases)，下载 `word-catcher-<版本>-chrome.zip`，解压到固定目录。
+2. Chrome 打开 `chrome://extensions`；Edge 打开 `edge://extensions`。
+3. 开启「开发者模式」，选择「加载已解压的扩展程序」，选择解压后**包含 `manifest.json` 的目录**。
+4. 将 Word Catcher 固定到工具栏，刷新原来已打开的网页，再开始划词。
 
-### 2. 快速存入 Anki 单词本
-* 查词后点击「**存入单词本**」，通过本地 AnkiConnect 插件自动建卡；
-* 卡片自动带上网页原句、整句翻译、词性音标与记忆线索，并支持生成语境挖空（Cloze）、看词识义等多维度复习卡片；
-* **离线安全队列**：Anki 客户端没开时保存不会丢失，会自动进入待写队列，Anki 启动后点击即可一键补写。
+安装后保留解压目录。更新时先完全解压新包，在扩展管理页重新加载或重新选择对应目录，再刷新网页。
 
----
+### Firefox
 
-## 🚀 快速开始
+1. 下载 `word-catcher-<版本>-firefox.zip` 并解压。
+2. 打开 `about:debugging#/runtime/this-firefox`，选择「临时载入附加组件」，选中解压目录中的 `manifest.json`。
+3. 刷新网页后使用。
 
-### 步骤 1：安装浏览器扩展
+这是 Firefox 的 [临时加载方式](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Your_first_WebExtension#installing)，重启浏览器后需要重新加载。当前发布压缩包不等同于已签名的长期安装包。侧边栏打开功能依赖浏览器的 `sidePanel` API，Firefox 当前无法通过该入口打开；可使用网页查词卡片和工具栏弹窗。
 
-#### 方式 A：直接下载安装包（推荐）
-1. 在 GitHub 页面右侧 **[Releases](https://github.com/qup1010/WordCatcher/releases)** 下载最新的 `word-catcher-0.1.0-chrome.zip`（Firefox 用户下载 `word-catcher-0.1.0-firefox.zip`）；
-2. 解压到本地任意目录；
-3. 打开 Chrome / Edge 扩展管理页面（`chrome://extensions` 或 `edge://extensions`），开启「**开发者模式**」；
-4. 点击「**加载已解压的扩展程序**」，选择解压后的目录即可完成安装。
+需要从源码构建时，参阅 [开发说明](docs/development.md)。
 
-#### 方式 B：从源码编译
-```bash
-git clone https://github.com/qup1010/WordCatcher.git
-cd WordCatcher
-pnpm install
-pnpm build
-```
-在浏览器扩展页面加载 `.output/chrome-mv3` 目录。
+## 第一次查词
 
----
+1. 打开一篇正常网页中的英文文章，划选一个单词或短句。
+2. 默认会在选区附近出现查词胶囊。点击「快译」，查看词典结果或在线翻译。
+3. 已配置 AI 时，可以点击「AI」结合当前原句解释含义。
+4. 继续阅读；需要回看时，从工具栏弹窗打开最近的查询记录。
 
-### 步骤 2：基础配置（按需开启）
-安装完成后无需任何配置即可直接在网页中划词使用**即时机翻**。若需更多进阶能力，可右键扩展图标打开「选项」：
-* **AI 语境释义（可选）**：在「AI 接口」分区填入 API Key 和模型名（支持 DeepSeek、OpenAI、Kimi、Ollama 等）；
-* **本地离线词库（推荐）**：在「离线词典」分区点击「一键从网络下载安装」或直接选择已下载的本地词库文件（支持 `.jsonl.gz` 压缩包或 `.jsonl` 文本），开启离线查词与记忆线索。
+快译无需 AI API Key；安装离线词典后，命中的短词可离线查询。点击工具栏中的 Word Catcher 图标，可以手动输入查询，也可以进入设置。Chrome / Edge 还可从界面中的侧边栏入口继续查词。
 
----
+### 选择适合自己的查词方式
 
-### 步骤 3：连接 Anki 单词本（可选）
-如果需要将生词一键同步到 Anki 进行多角度复习：
-1. 启动 [Anki 桌面版](https://apps.ankiweb.net/) 并保持在后台运行；
-2. 安装 AnkiConnect 插件：菜单栏点击「工具」→「附加组件」→「获取附加组件」→ 输入代码 **`2055492159`** 安装并重启 Anki；
-3. 在扩展设置页点击「测试连接并同步卡片模板」，确认连接正常即可开始一键存卡。
+| 方式 | 查询内容 | 使用条件 |
+| --- | --- | --- |
+| 离线词典 | 常用义、音标、完整义项、例句和记忆线索 | 先安装词典；命中后无需联网 |
+| 快译 | 已启用的离线词典优先；未命中或长句走在线机翻 | 在线部分需要网络，可选择 Microsoft 或 Google |
+| AI 详解 | 当前语境中的词义与整句翻译 | 配置兼容接口、模型和 API Key |
 
----
+在「设置 → 划词与朗读」中可以切换为直接快译、直接 AI 或自动模式，也可以设置修饰键、双击取词、释义语言、朗读速度和不启用划词的域名。设置修改会自动保存，请留意保存结果提示。
 
-## 📖 划词操作与触发方式
+## 安装离线词典
 
-在「设置 → 划词与朗读」中可以根据个人习惯设置触发方式：
-* **先显示操作胶囊**（默认）：划词后弹出快捷操作条，自由选择「快译」或「AI 释义」；
-* **直接快速翻译**：划选后立即弹出机翻/词库结果，需要时仍可在面板内点击升级 AI 释义；
-* **直接 AI 释义**：划选后直接调用大模型结合上下文分析。
+1. 进入设置的「离线词典」区域，启用词典。
+2. 使用默认地址下载，等待导入完成；也可以先下载文件，再选择本地文件导入。
+3. 查询常见英文单词，确认结果显示为离线词典。
 
----
+默认来源是 [Open Dictionary](https://github.com/ahpxex/open-dictionary) 的 `distribution.jsonl.gz`，手动下载见其 [Releases](https://github.com/ahpxex/open-dictionary/releases)。插件使用 JSONL 词典，并将内容保存在浏览器本地 IndexedDB 中；桌面版的 SQLite 词典文件不能直接导入插件。
 
-## 常见问题 (FAQ)
+词典卡片先展示常用释义，完整义项和记忆线索可以展开查看。词典未就绪或没有命中时，快译会使用在线服务。
 
-* **连不上 Anki？**  
-  请确认 Anki 桌面端正在运行，且已安装 AnkiConnect 插件（代码 `2055492159`）。
-* **提示「已在牌组」？**  
-  插件默认会根据单词原形在 Anki 对应牌组中查重，避免重复制卡。
-* **是否必须配置 AI？**  
-  不是必须。如果不配置 AI Key，仍可正常使用机翻与本地词库进行查词与存卡。
+## 配置 AI
 
----
+1. 进入设置的 AI 区域，新建或选中一套配置。
+2. 填写服务提供方的 **Base URL、API Key 和模型名**。Base URL 填兼容接口的基础地址，通常包含 `/v1` 等版本路径，不需要填完整的 `/chat/completions` 地址。
+3. 获取模型列表，或手动填写准确的模型名称。
+4. 测试连接，再使用设置中的 AI 示例或实际划词检查语境释义。
 
-## 鸣谢与开源许可 (Acknowledgments)
+支持多套配置并切换当前配置。连接测试通过只说明基础请求可用；实际查词还需要模型支持结构化输出。API 调用的网络条件、费用和额度由你选择的提供方决定。
 
-本项目支持接入与依赖以下优秀的开源项目：
+AI 会将划选文字和可获取的原句发送到该接口。同一词在同一语境中的 AI 结果会暂存在内存，减少重复请求；浏览器回收后台进程后缓存会清空，也可在「数据与维护」中手动清理。
 
-* **[Open Dictionary](https://github.com/ahpxex/open-dictionary)** (by [@ahpxex](https://github.com/ahpxex))  
-  提供开源离线词典数据源。其词典数据基于 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) 协议（衍生自 Wiktionary），项目源码遵循 MIT License。
-* **[Anki-Connect](https://git.sr.ht/~foosoft/anki-connect)** (by [@FooSoft](https://foosoft.net/projects/anki-connect/))  
-  提供与本地 Anki 桌面端通信的 API 桥梁。
-* 本扩展自身源码遵循 **[MIT License](LICENSE)** 开源协议。
+## 历史记录、备份与隐私
 
-**友情链接** · [**LINUX DO**](https://linux.do/)
+工具栏弹窗中可查看最近的查询记录，支持搜索、移除记录以及保存到 Anki。历史记录保留最近 **100** 个词条，同词查询会更新记录，适合回看近期查词。
 
+| 数据 | 保存位置或处理方式 |
+| --- | --- |
+| 设置、AI API Key、查询历史、待写队列 | 浏览器扩展的本地存储；API Key 未加密 |
+| 离线词典 | 浏览器本地 IndexedDB |
+| AI 查询缓存 | 后台进程内存，最多 50 条，进程回收后清空 |
+| 已写入 Anki 的卡片 | 由 Anki 管理 |
 
-## 界面交互预览
+在「设置 → 数据与维护」中可以导出或导入**配置备份**。备份包含明文 API Key，应像密钥一样保管；导入会替换当前配置。配置备份不包含查询历史、待写队列、离线词典、AI 缓存或 Anki 卡片。
 
-运行 `pnpm preview:interactive`，打开本地地址 `http://127.0.0.1:18788/preview/interactive.html`。
+历史记录用于回看近期查询，卸载插件或清除扩展数据可能丢失本地记录。需要长期收藏和整理词条时，可以选择桌面版的本地生词库，或使用下面介绍的 Anki 功能。
 
-- `?view=popup`：图标弹窗。
-- `?view=sidepanel`：侧边栏，可输入查询、查看历史和体验 AI 生成状态。
-- `?view=options`：完整设置页，支持修改与自动保存反馈。
-- `?view=content`：示例阅读网页，划选英文即可打开真实划词面板。
+### 权限与网络请求
 
-添加 `&scenario=offline` 查看离线状态；`history-error`、`load-error`、`save-error` 分别演示记录加载失败、设置读取失败和首次保存失败。设置保存失败后可点击重试恢复。
+- 网页访问权限用于读取选中文字、所在原句并显示查词界面；当前配置也允许访问用户自定义的 AI 接口。
+- 离线词典命中时查询在本地完成，下载词典时会访问所配置的下载地址。
+- 在线快译会将待翻译文字发送到所选择的翻译服务；AI 会将划选文字和原句发送到配置的 AI 服务。
+- 存入 Anki 时会将词条、语境和来源网页信息发送到配置的 AnkiConnect 地址，默认是本机。
+- 当前使用浏览器本地存储，不会通过浏览器账号自动同步插件设置和历史记录。
 
-预览使用真实 React 组件，但配置和服务全部由内存示例数据提供，不会读取个人配置、访问 AI 接口或写入真实 Anki。网络、权限、扩展后台和 Anki 实际连接仍需在安装后的插件中验收。静态样式预览继续使用 `pnpm preview`。
+<details>
+<summary><strong>可选：存入 Anki 复习</strong></summary>
+
+如果你已经使用 Anki，可以把词条和原句保存为复习卡片。查词、语境详解与历史回看均可独立使用。
+
+1. 安装并打开 [Anki 桌面版](https://apps.ankiweb.net/)。
+2. 在 Anki 中打开「工具 → 插件 → 获取插件」，填写 **`2055492159`** 安装 [AnkiConnect](https://ankiweb.net/shared/info/2055492159)，然后重启 Anki。
+3. 在插件设置的 Anki 区域填写地址、牌组和笔记类型。默认地址为 `http://127.0.0.1:8765`，牌组和笔记类型均为 `Word Catcher`。
+4. 测试连接，保持 Anki 运行，在查词卡片中点击「存入 Anki」。
+5. 到 Anki 对应牌组检查词条、释义与原句。
+
+插件会创建所需牌组和笔记类型，并在保存时检查重复词条。语境卡片使用实际选区位置，便于在重复单词的原句中定位本次选中的词。
+
+### Anki 未打开时怎么办
+
+无法连接时，卡片会留在本机待写队列。打开 Anki 后，进入「设置 → 数据与维护」，点击「全部补写进 Anki」。不要将进入队列理解为已写入 Anki；写入结果以补写提示与 Anki 中的笔记为准。
+
+队列按词条去重，重复待写词条会更新原记录，不会保留每次点击的独立卡片。需要跨设备复习时，使用 Anki 自身的同步功能。
+
+### Anki 测试连接失败
+
+确认 Anki 已打开，AnkiConnect 已安装并已重启，插件中的地址与端口正确。若卡片已经排队，可在连接恢复后手动补写。
+
+</details>
+
+## 常见问题
+
+### 划选后没有胶囊或卡片
+
+安装或更新后先刷新网页；检查是否设置了修饰键、域名黑名单，是否允许插件访问当前网站。浏览器内部页面、扩展商店和部分内置 PDF 阅读器不允许普通内容脚本运行。扫描件或图片也没有可直接读取的网页文本。
+
+在受限制页面中，可从工具栏弹窗手动输入查词；Windows 用户还可尝试 [桌面版](https://github.com/qup1010/WordCatcherDesktop)。
+
+### 快译失败或 AI 一直报错
+
+检查网络，或在设置中切换机翻服务。AI 需核对接口地址、密钥、模型名称与额度；基础连接成功但语境查询失败时，检查模型对结构化输出的支持。
+
+### 朗读没有声音
+
+确认浏览器和系统有可用的语音音色、系统未静音，并检查朗读语言设置。朗读使用浏览器的语音能力，音色和可用语言取决于系统与浏览器。
+
+### 如何反馈问题
+
+到 [Issues](https://github.com/qup1010/WordCatcher/issues) 提供插件版本、浏览器版本、问题页面类型、复现步骤和错误提示。分享截图或配置前，去掉私人语境和 API Key。
+
+## 项目与许可
+
+- Windows 中的 PDF、Word 等阅读场景可使用 [Word Catcher 桌面版](https://github.com/qup1010/WordCatcherDesktop)。
+- 构建、测试与发布见 [开发说明](docs/development.md)，验证记录见 [文档索引](docs/README.md)。
+- 插件代码使用 [MIT License](LICENSE)。离线词典来自 [Open Dictionary](https://github.com/ahpxex/open-dictionary)，数据署名包括 English Wiktionary 及其贡献者、Wiktextract，并按 [CC BY-SA 4.0](https://github.com/ahpxex/open-dictionary/blob/main/LICENSE-DATA.md) 授权，独立于插件代码许可。
