@@ -1,3 +1,4 @@
+import { formatQuickDictResult } from '../lib/open-dict/db'
 /** 仅供预览：服务全部使用内存示例数据，禁止触达真实账号、Anki 或设置。 */
 import { DEFAULT_SETTINGS } from '../lib/types'
 const scenario = new URLSearchParams(location.search).get('scenario')
@@ -40,6 +41,20 @@ export const browser = {
       if (req.type === 'check-duplicate') return ok({ exists: false })
       if (req.type === 'quick-translate') {
         await new Promise(resolve => setTimeout(resolve, 500))
+        if (scenario === 'dictionary') return ok({ mode: 'dict', dict: formatQuickDictResult({
+          headword: 'convenience', pronunciations: { us: 'kənˈviːniəns' }, memory_hook: entry.memoryHook,
+          pos_groups: [
+            { pos: 'name', meanings: [{ sense_id: 'name', priority: 'rare', short_gloss: '专名用法' }] },
+            { pos: 'noun', meanings: [
+              { sense_id: 'core1', priority: 'core', short_gloss: '方便；便利', learner_explanation: '指某件事省去麻烦，让生活或办事更容易。', examples: [
+                { text: 'We chose it for convenience.', translation: '我们选择它是为了方便。' },
+                { text: 'The shop is open for your convenience.', translation: '商店营业是为了方便您。' },
+              ], usage_note: '常见搭配：for convenience、at your convenience。' },
+              { sense_id: 'core2', priority: 'common', short_gloss: '便利设施', learner_explanation: '帮助人们节省时间或精力的设施。' },
+              { sense_id: 'rare', priority: 'rare', short_gloss: '公共厕所（英式用法）' },
+            ] },
+          ],
+        }) })
         return ok({ mode: 'mt', translation: entry.definition, provider: 'microsoft', sourceLang: 'en' })
       }
       if (req.type === 'open-sidepanel') { location.href = '/preview/interactive.html?view=sidepanel'; return ok(null) }

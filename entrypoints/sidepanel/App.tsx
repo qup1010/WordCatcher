@@ -1,3 +1,5 @@
+import { DictionaryView } from '@/lib/components/DictionaryView'
+import type { QuickDictResult } from '@/lib/open-dict/types'
 import {
   AlertCircle,
   Check,
@@ -32,6 +34,7 @@ export default function App() {
   const [tab, setTab] = useState<'current' | 'history'>('current')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
+  const [dictionary, setDictionary] = useState<QuickDictResult | null>(null)
   const [entry, setEntry] = useState<WordEntry | null>(null)
   const [historyList, setHistoryList] = useState<HistoryItem[]>([])
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'queued'>('idle')
@@ -99,6 +102,7 @@ export default function App() {
     setLookupError(null)
     setSaveError(null)
     setSaveState('idle')
+    setDictionary(null)
     setTab('current')
     setEntry(null)
     // 手动查询必须清掉上一次从网页同步来的语境，避免存卡时串句。
@@ -119,6 +123,7 @@ export default function App() {
     if (res.ok) {
       if (res.data.mode === 'dict') {
         const d = res.data.dict
+        setDictionary(d)
         setEntry({
           word: d.headword,
           reading: d.reading || '',
@@ -155,6 +160,7 @@ export default function App() {
     setLookupError(null)
     setSaveError(null)
     setSaveState('idle')
+    setDictionary(null)
 
     cancelStream.current = openEntryStream(
       { selection: w, sentence: currentSentence || w },
@@ -229,6 +235,7 @@ export default function App() {
     cancelStream.current?.()
     cancelStream.current = null
     setLoading(false)
+    setDictionary(null)
     setEntry({
       word: item.word,
       reading: item.reading || '',
@@ -370,14 +377,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="sp-card-def">{entry.definition}</div>
-
-              {entry.memoryHook && (
-                <div className="sp-hook">
-                  <strong>记忆线索</strong>
-                  <div>{entry.memoryHook}</div>
-                </div>
-              )}
+              {dictionary ? <DictionaryView key={dictionary.headword} result={dictionary} /> : <div className="sp-card-def">{entry.definition}</div>}
 
               {currentSentence && (
                 <div className="sp-sentence-box">
@@ -385,6 +385,13 @@ export default function App() {
                   {entry.contextTranslation && (
                     <div className="sp-sentence-trans">{entry.contextTranslation}</div>
                   )}
+                </div>
+              )}
+
+              {entry.memoryHook && (
+                <div className="sp-hook">
+                  <strong>记忆线索</strong>
+                  <div>{entry.memoryHook}</div>
                 </div>
               )}
 
@@ -413,7 +420,7 @@ export default function App() {
                   {saveState === 'saved' && (
                     <>
                       <Check size={13} />
-                      已存入 Anki
+                      已保存
                     </>
                   )}
                   {saveState === 'queued' && (
@@ -422,7 +429,7 @@ export default function App() {
                       已暂存，待同步
                     </>
                   )}
-                  {saveState === 'idle' && '存入 Anki'}
+                  {saveState === 'idle' && '保存'}
                 </button>
 
                 <button
@@ -506,7 +513,7 @@ export default function App() {
                         <span className="sp-history-word">{item.word}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           {item.savedToAnki && (
-                            <span className="sp-history-badge-ok">已存入 Anki</span>
+                            <span className="sp-history-badge-ok">已保存</span>
                           )}
                           <span className="sp-history-time">{formatRelativeTime(item.timestamp)}</span>
                           <button
@@ -530,7 +537,7 @@ export default function App() {
               <div className="sp-state">
                 <Search size={20} />
                 <strong>还没有查词记录</strong>
-                <span>查询过的词会保存在这里，方便再次查看和存入 Anki。</span>
+                <span>查询过的词会保存在这里，方便再次查看和保存。</span>
               </div>
             ) : null}
           </div>

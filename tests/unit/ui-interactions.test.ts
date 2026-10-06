@@ -72,10 +72,10 @@ describe('sidepanel transitions', () => {
       ? new Promise(resolve => { finish = resolve }) : Promise.resolve({ ok: true, data: [item] }))
     await mount(SidePanel); await click('查词历史 (1)')
     await act(async () => { host.querySelector<HTMLElement>('.sp-history-item')!.click() })
-    await click('存入 Anki'); await click('查词历史 (1)')
+    await click('保存'); await click('查词历史 (1)')
     await act(async () => { host.querySelector<HTMLElement>('.sp-history-item')!.click() })
     await act(async () => { finish({ ok: true, data: { queued: true } }) })
-    expect(host.querySelector('.sp-btn-save')?.textContent).toBe('存入 Anki')
+    expect(host.querySelector('.sp-btn-save')?.textContent).toBe('保存')
   })
 })
 it.each([SidePanel, Popup])('shows history load failures instead of an empty-history guide', async Component => {

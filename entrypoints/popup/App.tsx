@@ -140,7 +140,7 @@ export default function App() {
       if (res.data.queued && res.data.pending !== undefined) setPending(res.data.pending)
       setHistoryFeedback({
         kind: 'ok',
-        text: res.data.queued ? `Anki 未连接，「${item.word}」已安全暂存。` : `「${item.word}」已存入 Anki。`,
+        text: res.data.queued ? `Anki 未连接，「${item.word}」已安全暂存。` : `「${item.word}」已保存。`,
       })
     } else {
       setHistoryFeedback({ kind: 'err', text: res.error })
@@ -430,13 +430,13 @@ export default function App() {
                     <span className="pop-history-word">{item.word}</span>
                     <div className="pop-history-actions">
                       {item.savedToAnki ? (
-                        <span className="pop-badge-saved">已存入 Anki</span>
+                        <span className="pop-badge-saved">已保存</span>
                       ) : (
                         <button
                           type="button"
                           className="pop-btn-icon-sm"
-                          title={historyBusy === item.id ? '正在保存' : '存入 Anki'}
-                          aria-label={`将 ${item.word} 存入 Anki`}
+                          title={historyBusy === item.id ? '正在保存' : '保存'}
+                          aria-label={`保存 ${item.word}`}
                           disabled={historyBusy !== null}
                           onClick={() => void onSaveHistoryItem(item)}
                         >

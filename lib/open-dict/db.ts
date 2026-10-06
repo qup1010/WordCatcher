@@ -145,41 +145,46 @@ export function formatPosLabel(pos: string): string {
 /**
  * 转换 OpenDictEntry 为精简的快速查词结果 QuickDictResult
  */
+function priorityRank(priority: string): number {
+  switch (priority?.trim().toLowerCase()) {
+    case 'core': return 0
+    case 'rare': return 2
+    default: return 1
+  }
+}
+
+function isProperName(group: OpenDictEntry['pos_groups'][number]): boolean {
+  const pos = group.pos.trim().replace(/\.$/, '').toLowerCase()
+  return group.proper_name === true || ['name', 'proper noun', 'proper_noun', 'proper-noun', 'surname'].includes(pos)
+}
+
 export function formatQuickDictResult(entry: OpenDictEntry): QuickDictResult {
   const reading = entry.pronunciations?.us || entry.pronunciations?.uk || entry.pronunciations?.ipa || ''
-  const coreGroups: Array<{ pos: string, meanings: string[] }> = []
+  // 稳定排序只调整展示顺序，完整义项和原始词库对象均保留。
+  const allPosGroups = [...(entry.pos_groups || [])]
+    .sort((a, b) => Number(isProperName(a)) - Number(isProperName(b)))
+    .map(group => ({
+      ...group,
+      meanings: [...(group.meanings || [])].sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority)),
+    }))
+  const coreGroups: Array<{ pos: string, meanings: string[], properName?: boolean }> = []
   const coreMeanings: string[] = []
   let primaryPos = ''
 
-  for (const posGroup of entry.pos_groups || []) {
-    const formattedPos = formatPosLabel(posGroup.pos || '')
-    if (!primaryPos && formattedPos) {
-      primaryPos = formattedPos
-    }
+  for (const group of allPosGroups) {
+    const formattedPos = formatPosLabel(group.pos || '')
+    const heading = (meaning: typeof group.meanings[number]) =>
+      meaning.short_gloss?.trim() ? meaning.short_gloss : meaning.learner_explanation || ''
+    const readable = group.meanings.filter(meaning => heading(meaning).trim())
+    const usual = readable.filter(meaning => priorityRank(meaning.priority) < 2)
+    const selected = usual.length > 0 ? usual : readable
+    const picked = [...new Set(selected.map(heading))].slice(0, 3)
+    if (picked.length === 0 && group.summary?.trim()) picked.push(group.summary)
+    if (picked.length === 0) continue
 
-    const currentPosMeanings: string[] = []
-
-    for (const m of posGroup.meanings || []) {
-      const gloss = m.short_gloss || m.learner_explanation
-      if (gloss && !currentPosMeanings.includes(gloss)) {
-        if (m.priority === 'core') {
-          currentPosMeanings.unshift(gloss)
-        } else {
-          currentPosMeanings.push(gloss)
-        }
-      }
-    }
-
-    if (currentPosMeanings.length > 0) {
-      const picked = currentPosMeanings.slice(0, 3)
-      coreGroups.push({
-        pos: formattedPos || 'def.',
-        meanings: picked,
-      })
-      for (const p of picked) {
-        coreMeanings.push(formattedPos ? `${formattedPos} ${p}` : p)
-      }
-    }
+    if (!primaryPos) primaryPos = formattedPos
+    coreGroups.push({ pos: formattedPos || 'def.', meanings: picked, ...(isProperName(group) ? { properName: true } : {}) })
+    for (const gloss of picked) coreMeanings.push(formattedPos ? `${formattedPos} ${gloss}` : gloss)
   }
 
   return {
@@ -187,9 +192,9 @@ export function formatQuickDictResult(entry: OpenDictEntry): QuickDictResult {
     reading,
     memoryHook: entry.memory_hook,
     primaryPos,
-    coreMeanings: coreMeanings.slice(0, 5),
-    coreGroups: coreGroups.slice(0, 4), // 最多展示 4 个词性分组
-    allPosGroups: entry.pos_groups || [],
+    coreMeanings,
+    coreGroups,
+    allPosGroups,
   }
 }
 

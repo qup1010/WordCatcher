@@ -1,4 +1,5 @@
-import { Check, ChevronDown, ChevronUp, Copy, Lightbulb, PanelRight, Pencil, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
+import { DictionaryView } from '@/lib/components/DictionaryView'
+import { Check, Copy, Lightbulb, PanelRight, Pencil, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
 import { browser } from '#imports'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PartialEntry } from '@/lib/ai'
@@ -21,13 +22,6 @@ const PILL_WIDTH = 152
 const PILL_HEIGHT = 34
 
 /** 解析释义中的词性前缀（如 "n. 重置" 或 "adj. 准确的"） */
-function parseMeaningItem(raw: string): { pos?: string, text: string } {
-  const match = raw.match(/^([a-zA-Z]{1,6}\.?)\s+(.*)$/)
-  if (match) {
-    return { pos: match[1], text: match[2] }
-  }
-  return { text: raw }
-}
 
 /** 复制按钮组件 */
 function CopyBtn({ text, title = '复制词条' }: { text: string, title?: string }) {
@@ -427,7 +421,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const [sidePanelHint, setSidePanelHint] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
-  const [expandDict, setExpandDict] = useState(false)
   const [expandHook, setExpandHook] = useState(false)
   const [size, setSize] = useState({ width: PANEL_WIDTH, height: 0 })
   /** 当前流式请求的取消函数，换词或关闭面板时要调一下 */
@@ -458,7 +451,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     setSave({ kind: 'idle' })
     setDupe('unknown')
     setAnchor(null)
-    setExpandDict(false)
     setExpandHook(false)
     setPinned(false)
     setFixedPos(null)
@@ -561,7 +553,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const quickLookup = useCallback(async (ctx: SelectionContext) => {
     setOverrideDef(null)
     setPhase({ kind: 'quick-loading' })
-    setExpandDict(false)
     setExpandHook(false)
     const res = await sendMessage({
       type: 'quick-translate',
@@ -613,7 +604,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [phase.kind, expandDict, expandHook])
+  }, [phase.kind, expandHook])
 
   const saveCard = useCallback(async (entry: WordEntry) => {
     if (!anchor) return
@@ -687,7 +678,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     })
   }, [phase, anchor, saveCard])
 
-  // 出结果就顺手查一次重，让「存入 Anki」在用户读完释义之前就变成「已收藏」
+  // 出结果就顺手查一次重，让「保存」在用户读完释义之前就变成「已保存」
   const dupeWord = phase.kind === 'result'
     ? phase.entry.word
     : phase.kind === 'quick' && anchor
@@ -714,12 +705,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const saveLabel = save.kind === 'saving'
     ? '保存中…'
     : saved
-      ? '已存入 Anki'
+      ? '已保存'
       : queued
         ? '已暂存'
         : dupe === 'yes'
-          ? '已在牌组'
-          : '存入 Anki'
+          ? '已保存'
+          : '保存'
 
   // ── 选区监听 ──────────────────────────────────
   useEffect(() => {
@@ -756,8 +747,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         const rect = range.getBoundingClientRect()
         setAnchor({ ctx, range: range.cloneRange(), rect })
         setSave({ kind: 'idle' })
-        setExpandDict(false)
-        setExpandHook(false)
+            setExpandHook(false)
 
         // 联动广播给侧边栏（如果已开）
         browser.runtime.sendMessage({
@@ -1039,31 +1029,9 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             {/* ── 离线词典视图 ── */}
             {phase.kind === 'quick' && phase.mode === 'dict' && (
               <div className="wc-quick-body">
-                {phase.dict.coreGroups && phase.dict.coreGroups.length > 0 ? (
-                  <div className="wc-dict-core-groups">
-                    {phase.dict.coreGroups.map((g, idx) => (
-                      <div className="wc-dict-group-row" key={idx}>
-                        <span className="wc-pos-badge">{g.pos}</span>
-                        <div className="wc-dict-group-meanings">
-                          {g.meanings.map((m, mIdx) => (
-                            <span className="wc-dict-group-item" key={mIdx}>{m}</span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="wc-dict-core-list">
-                    {phase.dict.coreMeanings.map((m, idx) => {
-                      const parsed = parseMeaningItem(m)
-                      return (
-                        <div className="wc-dict-group-row" key={idx}>
-                          {parsed.pos && <span className="wc-pos-badge">{parsed.pos}</span>}
-                          <span className="wc-group-meanings">{parsed.text}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
+                <DictionaryView key={phase.dict.headword} result={phase.dict} />
+                {anchor.ctx.sentence && anchor.ctx.sentence !== anchor.ctx.selection && (
+                  <div className="wc-context">{highlight(anchor.ctx)}</div>
                 )}
 
                 {phase.dict.memoryHook && (
@@ -1090,35 +1058,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   </div>
                 )}
 
-                {phase.dict.allPosGroups.length > 0 && (
-                  <div>
-                    <button
-                      type="button"
-                      className="wc-dict-toggle"
-                      onClick={() => setExpandDict(!expandDict)}
-                    >
-                      <span>{expandDict ? '收起全部义项' : '展开全部词性与义项'}</span>
-                      {expandDict ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                    </button>
 
-                    {expandDict && (
-                      <div className="wc-dict" style={{ marginTop: 4 }}>
-                        {phase.dict.allPosGroups.map((pg, gIdx) => (
-                          <div className="wc-dict-pos-group" key={gIdx}>
-                            <div className="wc-dict-pos-header">
-                              {pg.pos} {pg.summary ? `· ${pg.summary}` : ''}
-                            </div>
-                            {pg.meanings.map((m, mIdx) => (
-                              <div className="wc-dict-meaning-item" key={mIdx}>
-                                • {m.short_gloss || m.learner_explanation}
-                              </div>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 

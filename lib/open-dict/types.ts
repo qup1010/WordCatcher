@@ -14,10 +14,12 @@ export interface DictMeaning {
   short_gloss: string
   learner_explanation?: string
   examples?: DictExample[]
+  usage_note?: string
 }
 
 export interface DictPosGroup {
   pos: string
+  proper_name?: boolean
   summary?: string
   meanings: DictMeaning[]
 }
@@ -49,6 +51,7 @@ export interface DictMeta {
 
 export interface QuickDictCoreGroup {
   pos: string
+  properName?: boolean
   meanings: string[]
 }
 
