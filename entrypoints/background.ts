@@ -1,3 +1,4 @@
+import { contextKey, saveLearning, readLearning, updateLearning, exportLearning, effectiveCard, markLearningSync } from '@/lib/learning'
 import { browser, defineBackground } from '#imports'
 import type { Browser } from 'wxt/browser'
 import { AiError, PREVIEW_SAMPLE, listModels, streamEntry, testConnection } from '@/lib/ai'
@@ -130,32 +131,48 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     }
 
     case 'save-card': {
+      const record = await saveLearning(req.payload)
+      const card = effectiveCard(record)
       try {
-        // 快速存卡如果缺少句子翻译且有原句，顺带异步机翻补全
-        if (!req.payload.entry.contextTranslation && req.payload.sentence) {
+        if (!card.entry.contextTranslation && card.sentence) {
           try {
-            const mt = await quickTranslate(req.payload.sentence, {
-              provider: settings.mt.provider,
-              explainLanguage: settings.explainLanguage,
-            })
-            if (mt.translation) {
-              req.payload.entry.contextTranslation = mt.translation
-            }
-          } catch {
-            // 忽略机翻错误
-          }
+            const mt = await quickTranslate(card.sentence, { provider: settings.mt.provider, explainLanguage: settings.explainLanguage })
+            card.entry.contextTranslation = mt.translation
+          } catch { /* 原始学习记录已保存，补译失败不影响收藏。 */ }
         }
+        const noteId = await addNote(card, settings)
+        await markLearningSync(record.id, undefined, record.revision)
+        void markHistorySaved(record.card.entry.word)
+        return { ok: true, data: { noteId, queued: false, recordId: record.id } }
+      } catch (err) {
+        const message = toErrorMessage(err)
+        await markLearningSync(record.id, message, record.revision)
+        const pending = await enqueue(card)
+        return { ok: true, data: { noteId: null, queued: true, pending, recordId: record.id, syncError: message } }
+      }
+    }
 
-        const noteId = await addNote(req.payload, settings)
-        void markHistorySaved(req.payload.entry.word)
+    case 'library-list':
+      return { ok: true, data: await readLearning() }
+    case 'library-export':
+      return { ok: true, data: await exportLearning() }
+    case 'library-update': {
+      const record = await updateLearning(req.payload.id, req.payload.edits)
+      await enqueue(effectiveCard(record))
+      return { ok: true, data: record }
+    }
+    case 'library-sync': {
+      const record = (await readLearning()).find(r => r.id === req.payload.id)
+      if (!record) throw new Error('这条语境已不存在。')
+      try {
+        const noteId = await addNote(effectiveCard(record), settings)
+        await markLearningSync(record.id, undefined, record.revision)
         return { ok: true, data: { noteId, queued: false } }
       } catch (err) {
-        // Anki 没开就先排队，让用户能接着读下去；其它错误（重复词等）照常报出去
-        if (!(err instanceof AnkiError && err.kind === 'unreachable')) throw err
-
-        const queued = await enqueue(req.payload)
-        void markHistorySaved(req.payload.entry.word)
-        return { ok: true, data: { noteId: null, queued: true, pending: queued } }
+        const syncError = toErrorMessage(err)
+        await markLearningSync(record.id, syncError, record.revision)
+        await enqueue(effectiveCard(record))
+        return { ok: true, data: { noteId: null, queued: true, syncError } }
       }
     }
 
@@ -168,7 +185,7 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     }
 
     case 'remove-pending': {
-      return { ok: true, data: { count: await removePending(req.payload.word) } }
+      return { ok: true, data: { count: await removePending(req.payload.word, req.payload.contextKey) } }
     }
 
     case 'clear-pending': {
@@ -192,7 +209,12 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
 
     case 'flush-pending': {
       const result = await flushPending(
-        card => addNote(card, settings),
+        async card => {
+          const current = card.recordId ? (await readLearning()).find(r => r.id === card.recordId) : undefined
+          const noteId = await addNote(current ? effectiveCard(current) : card, settings)
+          if (card.recordId) await markLearningSync(card.recordId, undefined, current?.revision ?? card.recordRevision)
+          return noteId
+        },
         // 只有连不上才值得留着重试；重复词之类重试一万次也是同样的结果
         err => err instanceof AnkiError && err.kind === 'unreachable',
       )
@@ -200,8 +222,10 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     }
 
     case 'check-duplicate': {
-      const ids = await findExisting(req.payload.word, settings)
-      return { ok: true, data: { exists: ids.length > 0 } }
+      const exists = req.payload.context
+        ? (await readLearning()).some(r => contextKey(r.card) === contextKey(req.payload.context!))
+        : (await findExisting(req.payload.word, settings)).length > 0
+      return { ok: true, data: { exists } }
     }
 
     case 'check-anki': {
@@ -301,24 +325,31 @@ function toErrorMessage(err: unknown): string {
  */
 function handleEntryStream(port: Browser.runtime.Port): void {
   let alive = true
+  const controller = new AbortController()
+  let started = false
   port.onDisconnect.addListener(() => {
     alive = false
+    controller.abort()
   })
 
   port.onMessage.addListener((raw: unknown) => {
     void (async () => {
+      if (started || !alive) return
+      started = true
       const req = raw as StreamStart
       try {
         const settings = await getSettings()
+        if (!alive || controller.signal.aborted) return
         if (!isAiConfigured(settings)) {
           throw new AiError('还没配置 AI，请先在设置页填入 API key 和模型名。')
         }
 
         const key = cacheKey({ ...req, settings })
-        const cached = getCached(key)
+        const cached = req.bypassCache ? undefined : getCached(key)
         if (cached) {
           void addHistory({
             word: cached.word || req.selection,
+            entry: cached, selection: req.selection, sentenceOffset: req.sentenceOffset, pageUrl: req.pageUrl, pageTitle: req.pageTitle,
             reading: cached.reading,
             definition: cached.definition,
             sentence: req.sentence,
@@ -331,6 +362,7 @@ function handleEntryStream(port: Browser.runtime.Port): void {
 
         const entry = await streamEntry({
           ...req,
+          signal: controller.signal,
           settings,
           onPartial: (partial) => {
             if (alive) port.postMessage({ type: 'partial', entry: partial } satisfies StreamEvent)
@@ -349,9 +381,11 @@ function handleEntryStream(port: Browser.runtime.Port): void {
           }
         }
 
+        if (!alive || controller.signal.aborted) return
         setCached(key, entry)
         void addHistory({
           word: entry.word || req.selection,
+          entry, selection: req.selection, sentenceOffset: req.sentenceOffset, pageUrl: req.pageUrl, pageTitle: req.pageTitle,
           reading: entry.reading,
           definition: entry.definition,
           sentence: req.sentence,

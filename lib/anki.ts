@@ -461,6 +461,7 @@ function escapeHtml(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 export function buildNoteFields(card: CapturedCard, s: Settings): Record<string, string> {
@@ -468,10 +469,10 @@ export function buildNoteFields(card: CapturedCard, s: Settings): Record<string,
   const cloze = buildClozeSentence(card.sentence, card.selection, card.sentenceOffset ?? -1)
 
   return {
-    Word: escapeHtml(card.entry.word),
+    Word: escapeHtml(card.entry.expression || card.entry.word),
     Reading: escapeHtml(card.entry.reading),
     PartOfSpeech: escapeHtml(card.entry.partOfSpeech),
-    Definition: escapeHtml(card.entry.definition),
+    Definition: escapeHtml(card.entry.definition) + (card.entry.usageNote ? '<div class="wc-trans">用法：' + escapeHtml(card.entry.usageNote) + '</div>' : ''),
     MemoryHook: escapeHtml(card.entry.memoryHook || ''),
     Sentence: s.anki.clozeContext ? cloze : escapeHtml(card.sentence),
     SentencePlain: escapeHtml(card.sentence),
@@ -484,6 +485,14 @@ export function buildNoteFields(card: CapturedCard, s: Settings): Record<string,
 
 export async function addNote(card: CapturedCard, s: Settings): Promise<number> {
   await ensureDeckAndModel(s)
+  const tag = card.recordId ? `wc-context-${card.recordId}` : null
+  if (tag) {
+    const existing = await invoke<number[]>(s.anki.url, 'findNotes', { query: `tag:${tag} "note:${escapeQuery(s.anki.noteTypeName)}"` })
+    if (existing.length) {
+      await invoke(s.anki.url, 'updateNoteFields', { note: { id: existing[0], fields: buildNoteFields(card, s) } })
+      return existing[0]
+    }
+  }
 
   try {
     const noteId = await invoke<number>(s.anki.url, 'addNote', {
@@ -491,10 +500,10 @@ export async function addNote(card: CapturedCard, s: Settings): Promise<number> 
         deckName: s.anki.deckName,
         modelName: s.anki.noteTypeName,
         fields: buildNoteFields(card, s),
-        tags: ['word-catcher'],
+        tags: tag ? ['word-catcher', tag] : ['word-catcher'],
         options: {
           // 靠首个字段（Word）查重，同一个词第二次划到时 Anki 会拒绝，避免刷屏
-          allowDuplicate: false,
+          allowDuplicate: Boolean(tag),
           duplicateScope: 'deck',
         },
       },

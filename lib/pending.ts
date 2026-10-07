@@ -1,3 +1,4 @@
+import { contextKey } from './learning'
 import { storage } from '#imports'
 import type { CapturedCard } from './types'
 
@@ -14,6 +15,12 @@ const PENDING_KEY = 'local:pending' as const
 
 /** 队列上限。攒到这个数还没补写，多半是长期没开 Anki，丢掉最老的即可 */
 const MAX_PENDING = 200
+let writes: Promise<unknown> = Promise.resolve()
+function mutate<T>(action: () => Promise<T>): Promise<T> {
+  const next = writes.then(action, action)
+  writes = next.catch(() => {})
+  return next
+}
 
 export interface FlushResult {
   /** 成功写进 Anki 的条数 */
@@ -33,12 +40,16 @@ export async function pendingCount(): Promise<number> {
   return (await readPending()).length
 }
 
-/** 入队。同一个词重复排队没有意义，按词形去重 */
-export async function enqueue(card: CapturedCard): Promise<number> {
+/** 同一语境保留最新待同步版本。 */
+export function enqueue(card: CapturedCard): Promise<number> {
+  return mutate(async () => {
   const queue = await readPending()
-  const word = card.entry.word.trim().toLowerCase()
+  const key = contextKey(card)
 
-  if (queue.some(c => c.entry.word.trim().toLowerCase() === word)) {
+  const existing = queue.findIndex(c => contextKey(c) === key)
+  if (existing >= 0) {
+    queue[existing] = card
+    await storage.setItem(PENDING_KEY, queue)
     return queue.length
   }
 
@@ -46,27 +57,24 @@ export async function enqueue(card: CapturedCard): Promise<number> {
   const next = [...queue, card].slice(-MAX_PENDING)
   await storage.setItem(PENDING_KEY, next)
   return next.length
+  })
 }
 
 export async function clearPending(): Promise<void> {
-  await storage.removeItem(PENDING_KEY)
+  await mutate(() => storage.removeItem(PENDING_KEY))
 }
 
-/**
- * 按词删掉一条。
- *
- * 用词而不是下标定位：设置页上看到的列表和 storage 里的顺序之间隔着一次
- * 异步读取，中间可能又排进来一条新的，按下标删会删错人。
- * enqueue 本来就按词去重，所以词在队列里是唯一的。
- */
-export async function removePending(word: string): Promise<number> {
+/** 设置页按语境删除；未提供语境身份的旧调用保留按词删除的行为。 */
+export function removePending(word: string, key?: string): Promise<number> {
+  return mutate(async () => {
   const target = word.trim().toLowerCase()
   const queue = await readPending()
-  const next = queue.filter(c => c.entry.word.trim().toLowerCase() !== target)
+  const next = queue.filter(c => key !== undefined ? contextKey(c) !== key : c.entry.word.trim().toLowerCase() !== target)
 
   if (next.length === queue.length) return queue.length
   await storage.setItem(PENDING_KEY, next)
   return next.length
+  })
 }
 
 /**
@@ -82,25 +90,20 @@ export async function flushPending(
   write: (card: CapturedCard) => Promise<unknown>,
   isRetryable: (err: unknown) => boolean,
 ): Promise<FlushResult> {
-  const queue = await readPending()
+  const snapshot = await readPending()
   let written = 0
   let dropped = 0
-
-  for (let i = 0; i < queue.length; i++) {
-    try {
-      await write(queue[i])
-      written++
-    } catch (err) {
-      if (isRetryable(err)) {
-        // Anki 又断了，剩下的（含当前这条）原样留到下次
-        const rest = queue.slice(i)
-        await storage.setItem(PENDING_KEY, rest)
-        return { written, dropped, remaining: rest.length }
-      }
+  for (const card of snapshot) {
+    try { await write(card); written++ }
+    catch (err) {
+      if (isRetryable(err)) break
       dropped++
     }
+    await mutate(async () => {
+      const current = await readPending()
+      // 同步过程中若发生编辑，保留新版本等待下次同步。
+      await storage.setItem(PENDING_KEY, current.filter(c => JSON.stringify(c) !== JSON.stringify(card)))
+    })
   }
-
-  await clearPending()
-  return { written, dropped, remaining: 0 }
+  return { written, dropped, remaining: await pendingCount() }
 }

@@ -314,3 +314,40 @@ describe('findExisting', () => {
     expect(calls).toHaveLength(0)
   })
 })
+
+
+describe('learning context identity', () => {
+  it('creates separate notes for two contexts of the same word', async () => {
+    let id = 40
+    const calls = mockAnki((action) => {
+      if (action === 'deckNames') return [settings.anki.deckName]
+      if (action === 'modelNames') return [settings.anki.noteTypeName]
+      if (action === 'findNotes' || action === 'findCards') return []
+      if (action === 'addNote') return ++id
+      return null
+    })
+    const first = await addNote({ ...sampleCard, recordId: 'river', entry: { ...sampleCard.entry, word: 'bank', definition: '河岸' } }, settings)
+    const second = await addNote({ ...sampleCard, recordId: 'money', entry: { ...sampleCard.entry, word: 'bank', definition: '银行' } }, settings)
+    expect(first).not.toBe(second)
+    const creates = calls.filter(c => c.action === 'addNote')
+    expect(creates).toHaveLength(2)
+    expect(creates.every(c => c.params.note.options.allowDuplicate)).toBe(true)
+    expect(creates[0].params.note.tags).toContain('wc-context-river')
+    expect(creates[1].params.note.tags).toContain('wc-context-money')
+  })
+  it('updates the existing context note instead of creating another note', async () => {
+    const calls = mockAnki((action) => {
+      if (action === 'deckNames') return [settings.anki.deckName]
+      if (action === 'modelNames') return [settings.anki.noteTypeName]
+      if (action === 'findNotes') return [41]
+      return null
+    })
+    const result = await addNote({ ...sampleCard, recordId: 'river', entry: { ...sampleCard.entry, definition: '用户编辑后的语境义' } }, settings)
+    expect(result).toBe(41)
+    expect(calls.some(c => c.action === 'addNote')).toBe(false)
+    const update = calls.find(c => c.action === 'updateNoteFields')!
+    expect(update.params.note.id).toBe(41)
+    expect(update.params.note.fields.Definition).toBe('用户编辑后的语境义')
+    expect(calls.find(c => c.action === 'findNotes')!.params.query).toContain('tag:wc-context-river')
+  })
+})

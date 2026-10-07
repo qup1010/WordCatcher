@@ -16,11 +16,14 @@ export async function addHistory(
   const wordKey = item.word.trim().toLowerCase()
 
   // 找到是否已经有相同词形的记录
-  const existingIdx = list.findIndex(h => h.word.trim().toLowerCase() === wordKey)
+  const existingIdx = list.findIndex(h => h.word.trim().toLowerCase() === wordKey && h.sentence === item.sentence)
   const isPreviouslySaved = existingIdx >= 0 ? Boolean(list[existingIdx].savedToAnki) : false
 
   const newItem: HistoryItem = {
     id: item.id || crypto.randomUUID(),
+    entry: item.entry,
+    selection: item.selection,
+    sentenceOffset: item.sentenceOffset,
     word: item.word.trim(),
     reading: item.reading,
     definition: item.definition,
@@ -28,6 +31,7 @@ export async function addHistory(
     pageTitle: item.pageTitle,
     pageUrl: item.pageUrl,
     timestamp: item.timestamp ?? Date.now(),
+    savedLocally: item.savedLocally,
     savedToAnki: item.savedToAnki ?? isPreviouslySaved,
     source: item.source,
   }

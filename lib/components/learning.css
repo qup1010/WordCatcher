@@ -1,0 +1,13 @@
+.learning-expression { margin: 12px 0; display: flex; flex-direction: column; gap: 4px; }
+.learning-expression small { opacity: .7; }
+.learning-details { margin: 12px 0; font-size: 13px; line-height: 1.65; }
+.learning-details summary { cursor: pointer; font-weight: 600; }
+.learning-details p, .learning-details blockquote { margin: 8px 0; white-space: pre-wrap; }
+.learning-details blockquote { border-left: 2px solid #0e6f63; padding-left: 10px; }
+.learning-details label { display: block; margin-top: 10px; }
+.learning-details textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 4px; padding: 8px; font: inherit; color: inherit; background: transparent; border: 1px solid #aaa8; border-radius: 6px; resize: vertical; }
+.learning-library-toolbar { display: flex; gap: 8px; margin-bottom: 14px; }
+.learning-library-toolbar input { flex: 1; min-width: 0; padding: 9px 11px; font: inherit; color: inherit; background: transparent; border: 1px solid #aaa8; border-radius: 6px; }
+.learning-library .sp-card-actions { flex-wrap: wrap; }
+.learning-library .sp-card { margin-bottom: 14px; }
+.learning-sync-status { font-size: 12px; opacity: .75; }

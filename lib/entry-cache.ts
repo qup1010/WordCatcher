@@ -1,3 +1,4 @@
+import { PROMPT_VERSION } from './ai'
 import { activeAiProfile } from './settings'
 import type { Settings, WordEntry } from './types'
 
@@ -29,6 +30,8 @@ export function cacheKey(params: {
 }): string {
   const profile = activeAiProfile(params.settings)
   return [
+    PROMPT_VERSION,
+    profile.id,
     profile.baseURL.trim(),
     profile.model.trim(),
     params.settings.explainLanguage,

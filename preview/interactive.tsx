@@ -19,6 +19,7 @@ async function mount() {
     const shadow = host.attachShadow({ mode: 'open' })
     const style = document.createElement('style')
     style.textContent = (await import('../entrypoints/content/style.css?inline')).default
+      + '\n' + (await import('../lib/components/learning.css?inline')).default
     shadow.append(style)
     const target = document.createElement('div')
     shadow.append(target)

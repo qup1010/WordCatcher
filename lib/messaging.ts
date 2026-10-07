@@ -3,7 +3,7 @@ import type { PartialEntry } from './ai'
 import type { GoogleDictEntry, MtProvider, QuickTranslation } from './machine-translate'
 import type { DictMeta, QuickDictResult } from './open-dict/types'
 import type { FlushResult } from './pending'
-import type { CapturedCard, HistoryItem, WordEntry } from './types'
+import type { CapturedCard, HistoryItem, WordEntry, LearningRecord, LearningEdits } from './types'
 
 export type QuickLookupResult =
   | { mode: 'dict', dict: QuickDictResult }
@@ -24,10 +24,10 @@ export type Request =
   | { type: 'list-models' }
   | { type: 'test-ai' }
   | { type: 'save-card', payload: CapturedCard }
-  | { type: 'check-duplicate', payload: { word: string } }
+  | { type: 'check-duplicate', payload: { word: string, context?: Pick<CapturedCard, 'selection' | 'sentence' | 'sentenceOffset' | 'pageUrl'> } }
   | { type: 'pending-count' }
   | { type: 'pending-list' }
-  | { type: 'remove-pending', payload: { word: string } }
+  | { type: 'remove-pending', payload: { word: string, contextKey?: string } }
   | { type: 'clear-pending' }
   | { type: 'flush-pending' }
   | { type: 'cache-stats' }
@@ -35,6 +35,10 @@ export type Request =
   | { type: 'check-anki' }
   | { type: 'sync-anki-templates' }
   | { type: 'open-options' }
+  | { type: 'library-list' }
+  | { type: 'library-export' }
+  | { type: 'library-update', payload: { id: string, edits: LearningEdits } }
+  | { type: 'library-sync', payload: { id: string } }
   | { type: 'history-list' }
   | { type: 'history-remove', payload: { id: string } }
   | { type: 'history-clear' }
@@ -56,7 +60,7 @@ export type ResponseMap = {
     structuredError: string | null
   }
   /** Anki 没开时 noteId 为 null、queued 为 true，卡片进了待写队列 */
-  'save-card': { noteId: number | null, queued: boolean, pending?: number }
+  'save-card': { noteId: number | null, queued: boolean, pending?: number, recordId?: string, syncError?: string }
   'check-duplicate': { exists: boolean }
   'pending-count': { count: number }
   'pending-list': { cards: CapturedCard[] }
@@ -69,6 +73,10 @@ export type ResponseMap = {
   'check-anki': { version: number }
   'sync-anki-templates': null
   'open-options': null
+  'library-list': LearningRecord[]
+  'library-export': string
+  'library-update': LearningRecord
+  'library-sync': { noteId: number | null, queued: boolean, syncError?: string }
   'history-list': HistoryItem[]
   'history-remove': HistoryItem[]
   'history-clear': null
@@ -86,6 +94,10 @@ export type Result<T> = { ok: true, data: T } | { ok: false, error: string }
 export const ENTRY_STREAM_PORT = 'wc-entry-stream'
 
 export interface StreamStart {
+  pageUrl?: string
+  pageTitle?: string
+  sentenceOffset?: number
+  bypassCache?: boolean
   selection: string
   sentence: string
 }

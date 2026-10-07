@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { __resetStorage } from '../helpers/wxt-imports-stub'
 import { enqueue, flushPending, pendingCount, readPending, removePending } from '../../lib/pending'
 import type { CapturedCard } from '../../lib/types'
+import { contextKey } from '../../lib/learning'
 
 function card(word: string): CapturedCard {
   return {
@@ -38,10 +39,11 @@ describe('enqueue', () => {
     expect((await readPending())[0].entry.word).toBe('devastate')
   })
 
-  it('同一个词重复排队没有意义，忽略掉', async () => {
+  it('同一语境重复排队替换为最新版本', async () => {
     await enqueue(card('devastate'))
-    await enqueue(card('Devastate')) // 大小写不同也算同一个
+    await enqueue({ ...card('devastate'), entry: { ...card('devastate').entry, definition: '更新释义' } })
     expect(await pendingCount()).toBe(1)
+    expect((await readPending())[0].entry.definition).toBe('更新释义')
   })
 
   it('超过上限时丢最老的，保留最近划到的', async () => {
@@ -55,6 +57,13 @@ describe('enqueue', () => {
 })
 
 describe('removePending', () => {
+  it('删除一条语境不会删除同词其他语境', async () => {
+    const first = card('bank')
+    const second = { ...card('bank'), sentence: 'She went to the bank.' }
+    await enqueue(first); await enqueue(second)
+    expect(await removePending('bank', contextKey(first))).toBe(1)
+    expect((await readPending())[0].sentence).toBe(second.sentence)
+  })
   it('按词删掉一条，返回剩余条数', async () => {
     for (const w of ['a', 'b', 'c']) await enqueue(card(w))
 
@@ -75,6 +84,14 @@ describe('removePending', () => {
 })
 
 describe('flushPending', () => {
+  it('同步过程中发生编辑时保留新的待同步版本', async () => {
+    const original = card('bank')
+    await enqueue(original)
+    const updated = { ...original, entry: { ...original.entry, definition: '编辑后的语境义' } }
+    const result = await flushPending(async () => { await enqueue(updated) }, retryable)
+    expect(result).toEqual({ written: 1, dropped: 0, remaining: 1 })
+    expect((await readPending())[0].entry.definition).toBe('编辑后的语境义')
+  })
   it('全部写成功后清空队列', async () => {
     await enqueue(card('a'))
     await enqueue(card('b'))

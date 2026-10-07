@@ -1,3 +1,5 @@
+import { LearningDetails, LearningEditor } from '@/lib/components/LearningDetails'
+import type { LearningEdits } from '@/lib/types'
 import { DictionaryView } from '@/lib/components/DictionaryView'
 import { Check, Copy, Lightbulb, PanelRight, Pencil, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
 import { browser } from '#imports'
@@ -304,6 +306,7 @@ function EntryBody({
         </div>
       )}
 
+      <LearningDetails entry={entry} />
       {entry.memoryHook && (
         <div className="wc-hook-card">
           <div className="wc-hook-card-header">
@@ -417,6 +420,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const [pinned, setPinned] = useState(false)
   const [fixedPos, setFixedPos] = useState<{ left: number, top: number } | null>(null)
   const [dragOffset, setDragOffset] = useState<{ x: number, y: number }>({ x: 0, y: 0 })
+  const [learningEdits, setLearningEdits] = useState<LearningEdits>({})
   const [overrideDef, setOverrideDef] = useState<string | null>(null)
   const [sidePanelHint, setSidePanelHint] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -532,12 +536,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
    * 走流式：释义会逐字出现，首字通常 1 秒内就到。上一条还没结束就再划词的话，
    * 先把旧的取消掉，否则两条流会交替往同一个面板里写。
    */
-  const lookup = useCallback((ctx: SelectionContext) => {
+  const lookup = useCallback((ctx: SelectionContext, bypassCache = false) => {
     streamRef.current?.()
-    setOverrideDef(null)
+    setSave({ kind: 'idle' })
     setPhase({ kind: 'loading' })
 
-    streamRef.current = openEntryStream(ctx, {
+    streamRef.current = openEntryStream({ ...ctx, pageUrl: location.href, pageTitle: document.title, sentenceOffset: ctx.offset, bypassCache }, {
       onPartial: partial => setPhase({ kind: 'streaming', partial }),
       onDone: (entry) => {
         streamRef.current = null
@@ -552,6 +556,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
   const quickLookup = useCallback(async (ctx: SelectionContext) => {
     setOverrideDef(null)
+    setLearningEdits({})
     setPhase({ kind: 'quick-loading' })
     setExpandHook(false)
     const res = await sendMessage({
@@ -606,7 +611,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     return () => observer.disconnect()
   }, [phase.kind, expandHook])
 
-  const saveCard = useCallback(async (entry: WordEntry) => {
+  const saveCard = useCallback(async (entry: WordEntry, edits?: LearningEdits) => {
     if (!anchor) return
 
     setSave({ kind: 'saving' })
@@ -614,6 +619,8 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       type: 'save-card',
       payload: {
         entry,
+        edits,
+        updateExisting: dupe === 'yes',
         selection: anchor.ctx.selection,
         sentence: anchor.ctx.sentence,
         sentenceOffset: anchor.ctx.offset,
@@ -634,16 +641,13 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     }
 
     setSave({ kind: 'saved' })
-    setTimeout(dismiss, 1200)
-  }, [anchor, dismiss])
+    setDupe('yes')
+  }, [anchor, dismiss, dupe])
 
   const onSave = useCallback(async () => {
     if (phase.kind !== 'result') return
-    const entryToSave = overrideDef
-      ? { ...phase.entry, definition: overrideDef }
-      : phase.entry
-    await saveCard(entryToSave)
-  }, [phase, saveCard, overrideDef])
+    await saveCard(phase.entry, { ...learningEdits, ...(overrideDef !== null ? { definition: overrideDef } : {}) })
+  }, [phase, saveCard, overrideDef, learningEdits])
 
   /** 快译结果直接存卡：有离线词典用离线词典，否则用机器翻译 */
   const onSaveQuick = useCallback(async () => {
@@ -690,27 +694,27 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
     let stale = false
     setDupe('unknown')
-    void sendMessage({ type: 'check-duplicate', payload: { word: dupeWord } })
+    void sendMessage({ type: 'check-duplicate', payload: { word: dupeWord, context: anchor ? { selection: anchor.ctx.selection, sentence: anchor.ctx.sentence, sentenceOffset: anchor.ctx.offset, pageUrl: location.href } : undefined } })
       .then((res) => {
         if (!stale && res.ok) setDupe(res.data.exists ? 'yes' : 'no')
       })
     return () => {
       stale = true
     }
-  }, [dupeWord])
+  }, [dupeWord, anchor])
 
   const saved = save.kind === 'saved'
   const queued = save.kind === 'queued'
-  const saveDisabled = save.kind === 'saving' || saved || queued || dupe === 'yes'
+  const saveDisabled = save.kind === 'saving' || saved || queued
   const saveLabel = save.kind === 'saving'
     ? '保存中…'
     : saved
       ? '已保存'
       : queued
-        ? '已暂存'
+        ? '已存入单词本'
         : dupe === 'yes'
-          ? '已保存'
-          : '保存'
+          ? '更新这条语境'
+          : '存入单词本'
 
   // ── 选区监听 ──────────────────────────────────
   useEffect(() => {
@@ -747,12 +751,14 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         const rect = range.getBoundingClientRect()
         setAnchor({ ctx, range: range.cloneRange(), rect })
         setSave({ kind: 'idle' })
-            setExpandHook(false)
+        setOverrideDef(null)
+        setLearningEdits({})
+        setExpandHook(false)
 
         // 联动广播给侧边栏（如果已开）
         browser.runtime.sendMessage({
           type: 'sidepanel-sync-word',
-          payload: { word: ctx.selection, sentence: ctx.sentence },
+          payload: { word: ctx.selection, sentence: ctx.sentence, sentenceOffset: ctx.offset, pageUrl: location.href, pageTitle: document.title },
         }).catch(() => {})
 
         if (!pinned) {
@@ -1102,7 +1108,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   type="button"
                   className="wc-btn wc-btn-primary"
                   disabled={saveDisabled}
-                  title={dupe === 'yes' ? '这个词已经在牌组里了' : '快捷键: Enter'}
+                  title={dupe === 'yes' ? '更新已保存的这条语境' : '快捷键: Enter'}
                   onClick={() => void onSaveQuick()}
                 >
                   <span>{saveLabel}</span>
@@ -1184,7 +1190,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
           <>
             <div className="wc-error" role="alert">{phase.message}</div>
             <div className="wc-actions">
-              <button type="button" className="wc-btn wc-btn-primary" onClick={() => lookup(anchor.ctx)}>
+              <button type="button" className="wc-btn wc-btn-primary" onClick={() => lookup(anchor.ctx, true)}>
                 重试
               </button>
               <button
@@ -1227,16 +1233,22 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               onStartDrag={onStartDrag}
               onClose={dismiss}
               onOpenSidePanel={openSidePanel}
-              onEditDefinition={setOverrideDef}
+              onEditDefinition={value => { setOverrideDef(value); setSave({ kind: 'idle' }) }}
             />
 
+            <LearningEditor entry={phase.entry} edits={{ ...learningEdits, ...(overrideDef !== null ? { definition: overrideDef } : {}) }} onChange={value => { setLearningEdits(value); setOverrideDef(value.definition ?? null); setSave({ kind: 'idle' }) }} />
             <div className="wc-actions">
+              <button
+                type="button"
+                className="wc-btn wc-btn-ghost"
+                onClick={() => lookup(anchor.ctx, true)}
+              >重新生成</button>
               <button
                 type="button"
                 className="wc-btn wc-btn-primary"
                 onClick={() => void onSave()}
                 disabled={saveDisabled}
-                title={dupe === 'yes' ? '这个词已经在牌组里了' : '快捷键: Enter'}
+                title={dupe === 'yes' ? '更新已保存的这条语境' : '快捷键: Enter'}
               >
                 <span>{saveLabel}</span>
                 {!saveDisabled && <span className="wc-kbd">↵ Enter</span>}
@@ -1250,7 +1262,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               )}
 
               {dupe === 'yes' && !saved && !queued && (
-                <span className="wc-note">已在当前牌组，无需重复保存</span>
+                <span className="wc-note">这条语境已保存，可编辑或重新生成后更新</span>
               )}
 
               {save.kind === 'queued' && (

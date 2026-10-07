@@ -1,26 +1,32 @@
+import { contextKey, saveLearning, readLearning, updateLearning, exportLearning, markLearningSync } from '../lib/learning'
 import { formatQuickDictResult } from '../lib/open-dict/db'
 /** 仅供预览：服务全部使用内存示例数据，禁止触达真实账号、Anki 或设置。 */
-import { DEFAULT_SETTINGS } from '../lib/types'
+import { DEFAULT_SETTINGS, type HistoryItem } from '../lib/types'
 const scenario = new URLSearchParams(location.search).get('scenario')
 const settings = structuredClone(DEFAULT_SETTINGS)
 settings.ai.profiles[0].apiKey = 'preview-only'
 let store: Record<string, unknown> = { 'local:settings': settings }
-const watchers = new Set<(value: unknown) => void>()
-let history = [
-  { id: 'demo-1', word: 'convenience', definition: '方便；便利。也指让生活更省事的物品或设施。', sentence: 'The convenience of a familiar place can make a difficult day feel a little easier.', reading: 'kənˈviːniəns', timestamp: Date.now() - 120000, savedToAnki: false },
-  { id: 'demo-2', word: 'a blessing in disguise', definition: '因祸得福；起初看似不幸，后来却带来益处。', sentence: '', reading: '', timestamp: Date.now() - 3600000, savedToAnki: true },
+const watchers = new Map<string, Set<(value: unknown) => void>>()
+let history: HistoryItem[] = [
+  { id: 'demo-1', word: 'convenience', definition: '方便；便利。也指让生活更省事的物品或设施。', sentence: 'The convenience of a familiar place can make a difficult day feel a little easier.', reading: 'kənˈviːniəns', timestamp: Date.now() - 120000, savedToAnki: false, source: 'dict' },
+  { id: 'demo-2', word: 'a blessing in disguise', definition: '因祸得福；起初看似不幸，后来却带来益处。', sentence: '', reading: '', timestamp: Date.now() - 3600000, savedToAnki: true, source: 'ai' },
 ]
 let failedSave = false
 export const storage = {
   async getItem(key: string) { if (scenario === 'load-error') throw new Error('示例：读取失败'); return store[key] ?? null },
   async setItem(key: string, value: unknown) {
     if (scenario === 'save-error' && !failedSave) { failedSave = true; throw new Error('示例：保存失败') }
-    store[key] = value; watchers.forEach(cb => cb(value))
+    store[key] = value; watchers.get(key)?.forEach(cb => cb(value))
   },
   async removeItem(key: string) { delete store[key] },
-  watch(_key: string, cb: (value: unknown) => void) { watchers.add(cb); return () => { watchers.delete(cb) } },
+  watch(key: string, cb: (value: unknown) => void) { const set = watchers.get(key) ?? new Set(); set.add(cb); watchers.set(key, set); return () => { set.delete(cb) } },
 }
-const entry = { word: 'convenience', reading: 'kənˈviːniəns', partOfSpeech: 'n.', definition: '方便；便利；让生活更省事的物品或设施。', contextTranslation: '熟悉的地方带来的便利，能让艰难的一天稍微轻松一点。', memoryHook: '想象一条少绕路的路：路更省事是便利，帮助你省事的东西是便利设施。' }
+const entry = { inputKind: 'word' as const, expression: 'convenience', keyExplanation: '这里指熟悉环境带来的便利，不是具体的便利设施。', usageNote: '常见搭配：for convenience、at your convenience。', example: 'We chose it for convenience.', exampleTranslation: '我们选择它是为了方便。', generation: { model: 'preview-only', promptVersion: 'learning-v1', generatedAt: new Date().toISOString() }, word: 'convenience', reading: 'kənˈviːniəns', partOfSpeech: 'n.', definition: '方便；便利；让生活更省事的物品或设施。', contextTranslation: '熟悉的地方带来的便利，能让艰难的一天稍微轻松一点。', memoryHook: '想象一条少绕路的路：路更省事是便利，帮助你省事的东西是便利设施。' }
+if (scenario === 'learning') history.unshift({
+  id: 'learning-preview', word: entry.word, selection: 'convenience', sentenceOffset: 4,
+  entry, definition: entry.definition, sentence: 'The convenience of a familiar place can make a difficult day feel a little easier.',
+  timestamp: Date.now(), source: 'ai', pageUrl: 'https://example.test/article', pageTitle: 'Preview article',
+})
 const listeners = new Set<(value: unknown) => void>()
 export const browser = {
   runtime: {
@@ -37,8 +43,14 @@ export const browser = {
       if (req.type === 'pending-count') return ok({ count: scenario === 'offline' ? 3 : 0 })
       if (req.type === 'pending-list') return ok({ cards: [] })
       if (req.type === 'cache-stats') return ok({ size: 8 })
-      if (req.type === 'save-card') return ok({ noteId: null, queued: scenario === 'offline', pending: 3 })
-      if (req.type === 'check-duplicate') return ok({ exists: false })
+      if (req.type === 'save-card') { const record = await saveLearning(req.payload); return ok({ noteId: null, queued: scenario === 'offline', pending: 3, recordId: record.id }) }
+      if (req.type === 'library-list') return ok(await readLearning())
+      if (req.type === 'library-export') return ok(await exportLearning())
+      if (req.type === 'library-update') return ok(await updateLearning(req.payload.id, req.payload.edits))
+      if (req.type === 'library-sync') { await markLearningSync(req.payload.id); return ok({ noteId: 1, queued: false }) }
+      if (req.type === 'check-duplicate') return ok({ exists: req.payload.context
+        ? (await readLearning()).some(record => contextKey(record.card) === contextKey(req.payload.context))
+        : false })
       if (req.type === 'quick-translate') {
         await new Promise(resolve => setTimeout(resolve, 500))
         if (scenario === 'dictionary') return ok({ mode: 'dict', dict: formatQuickDictResult({

@@ -34,6 +34,19 @@ beforeEach(() => {
 })
 afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.replaceChildren() })
 describe('sidepanel transitions', () => {
+  it('discards a partial result on stream failure and prevents saving it', async () => {
+    await mount(SidePanel); await click('查词历史 (1)')
+    await act(async () => { host.querySelector<HTMLElement>('.sp-history-item')!.click() })
+    await click('AI 详解')
+    const handlers = mock.stream.mock.calls[0][1]
+    await act(async () => handlers.onPartial({ ...entry, definition: '未完成释义' }))
+    await act(async () => handlers.onError('连接中断'))
+    expect(host.textContent).toContain('连接中断')
+    expect(host.textContent).not.toContain('未完成释义')
+    expect(host.querySelector('.sp-btn-save')?.textContent).toBe('重试')
+    expect(Array.from(host.querySelectorAll('button')).some(b => b.textContent === '存入单词本')).toBe(false)
+    expect(mock.send.mock.calls.some(([req]) => req.type === 'save-card')).toBe(false)
+  })
   it('keeps a selected history item when an earlier lookup finishes', async () => {
     let finish!: (value: unknown) => void
     mock.send.mockImplementation((req: { type: string }) => req.type === 'quick-translate'
@@ -56,7 +69,7 @@ describe('sidepanel transitions', () => {
   it('disables saving partial AI results and cancels streaming when history is selected', async () => {
     await mount(SidePanel); await click('查词历史 (1)')
     await act(async () => { host.querySelector<HTMLElement>('.sp-history-item')!.click() })
-    await click('AI 释义')
+    await click('AI 详解')
     const handlers = mock.stream.mock.calls[0][1]
     await act(async () => handlers.onPartial({ ...entry, definition: '半成品' }))
     expect(host.querySelector<HTMLButtonElement>('.sp-btn-save')!.disabled).toBe(true)
@@ -72,10 +85,10 @@ describe('sidepanel transitions', () => {
       ? new Promise(resolve => { finish = resolve }) : Promise.resolve({ ok: true, data: [item] }))
     await mount(SidePanel); await click('查词历史 (1)')
     await act(async () => { host.querySelector<HTMLElement>('.sp-history-item')!.click() })
-    await click('保存'); await click('查词历史 (1)')
+    await click('存入单词本'); await click('查词历史 (1)')
     await act(async () => { host.querySelector<HTMLElement>('.sp-history-item')!.click() })
     await act(async () => { finish({ ok: true, data: { queued: true } }) })
-    expect(host.querySelector('.sp-btn-save')?.textContent).toBe('保存')
+    expect(host.querySelector('.sp-btn-save')?.textContent).toBe('存入单词本')
   })
 })
 it.each([SidePanel, Popup])('shows history load failures instead of an empty-history guide', async Component => {

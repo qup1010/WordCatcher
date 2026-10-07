@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { backupFileName, buildBackup, describeSettings, parseBackup } from '@/lib/backup'
 import { sendMessage } from '@/lib/messaging'
 import { saveSettings } from '@/lib/settings'
+import { contextKey } from '@/lib/learning'
 import type { CapturedCard } from '@/lib/types'
 import { Section } from '../components/Section'
 import type { SectionProps, Status } from './types'
@@ -52,8 +53,8 @@ export function DataSection({ s, onChange }: SectionProps) {
       : { kind: 'ok', text: `写入 ${written} 张${dropped > 0 ? `，跳过 ${dropped} 张重复的` : ''}。` })
   }
 
-  const onRemove = async (word: string) => {
-    const res = await sendMessage({ type: 'remove-pending', payload: { word } })
+  const onRemove = async (card: CapturedCard) => {
+    const res = await sendMessage({ type: 'remove-pending', payload: { word: card.entry.word, contextKey: contextKey(card) } })
     if (res.ok) refresh()
   }
 
@@ -133,7 +134,7 @@ export function DataSection({ s, onChange }: SectionProps) {
               <>
                 <ul className="queue-list">
                   {queue.map(card => (
-                    <li key={card.entry.word}>
+                    <li key={contextKey(card)}>
                       <div className="queue-item">
                         <span className="queue-word">{card.entry.word}</span>
                         <span className="queue-def">{card.entry.definition}</span>
@@ -142,8 +143,8 @@ export function DataSection({ s, onChange }: SectionProps) {
                       <button
                         type="button"
                         className="btn btn-icon btn-danger"
-                        title={`不要「${card.entry.word}」了`}
-                        onClick={() => void onRemove(card.entry.word)}
+                        title={`取消同步「${card.entry.word}」的这条语境`}
+                        onClick={() => void onRemove(card)}
                       >
                         <Trash2 size={13} />
                       </button>

@@ -1,3 +1,5 @@
+import { LearningDetails, LearningEditor } from '@/lib/components/LearningDetails'
+import { LearningLibrary } from '@/lib/components/LearningLibrary'
 import { DictionaryView } from '@/lib/components/DictionaryView'
 import type { QuickDictResult } from '@/lib/open-dict/types'
 import {
@@ -16,7 +18,7 @@ import { openEntryStream, sendMessage } from '@/lib/messaging'
 import { getSettings, watchSettings } from '@/lib/settings'
 import { isTtsSupported, speak } from '@/lib/tts'
 import { navigateTabs } from '@/lib/ui-keyboard'
-import { DEFAULT_SETTINGS, type HistoryItem, type Settings, type WordEntry } from '@/lib/types'
+import { DEFAULT_SETTINGS, type HistoryItem, type Settings, type WordEntry, type LearningEdits, type LearningRecord } from '@/lib/types'
 
 function formatRelativeTime(ts: number): string {
   const diff = Date.now() - ts
@@ -31,13 +33,17 @@ function formatRelativeTime(ts: number): string {
 
 export default function App() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS)
-  const [tab, setTab] = useState<'current' | 'history'>('current')
+  const [tab, setTab] = useState<'current' | 'history' | 'library'>('current')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [dictionary, setDictionary] = useState<QuickDictResult | null>(null)
   const [entry, setEntry] = useState<WordEntry | null>(null)
   const [historyList, setHistoryList] = useState<HistoryItem[]>([])
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'queued'>('idle')
+  const [edits, setEdits] = useState<LearningEdits>({})
+  const [originalSelection, setOriginalSelection] = useState('')
+  const [sourceContext, setSourceContext] = useState({ sentenceOffset: -1, pageUrl: '', pageTitle: '' })
+  const [savedContext, setSavedContext] = useState<string | undefined>()
   const [currentSentence, setCurrentSentence] = useState<string>('')
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -64,11 +70,11 @@ export default function App() {
 
     // 监听来自扩展内部的消息（例如内容脚本划词广播）
     const onMessage = (msg: unknown) => {
-      const m = msg as { type?: string, payload?: { word: string, sentence?: string } }
+      const m = msg as { type?: string, payload?: { word: string, sentence?: string, sentenceOffset?: number, pageUrl?: string, pageTitle?: string } }
       if (m?.type === 'sidepanel-sync-word' && m.payload?.word) {
         setQuery(m.payload.word)
         setCurrentSentence(m.payload.sentence || '')
-        void doLookup(m.payload.word, m.payload.sentence)
+        void doLookup(m.payload.word, m.payload.sentence, { sentenceOffset: m.payload.sentenceOffset ?? -1, pageUrl: m.payload.pageUrl ?? '', pageTitle: m.payload.pageTitle ?? '' })
       }
     }
     browser.runtime.onMessage.addListener(onMessage)
@@ -92,7 +98,7 @@ export default function App() {
     }
   }, [refreshHistory])
 
-  const doLookup = async (text: string, sentence?: string) => {
+  const doLookup = async (text: string, sentence?: string, context = { sentenceOffset: -1, pageUrl: '', pageTitle: '' }) => {
     const w = text.trim()
     if (!w) return
     const sequence = ++lookupSequence.current
@@ -107,6 +113,10 @@ export default function App() {
     setEntry(null)
     // 手动查询必须清掉上一次从网页同步来的语境，避免存卡时串句。
     setCurrentSentence(sentence ?? '')
+    setOriginalSelection(w)
+    setSourceContext(context)
+    setEdits({})
+    setSavedContext(undefined)
 
     // 先走快速翻译与本地词典
     const res = await sendMessage({
@@ -152,7 +162,7 @@ export default function App() {
   }
 
   const doAiLookup = () => {
-    const w = (entry?.word || query).trim()
+    const w = (originalSelection || query).trim()
     if (!w) return
     const sequence = ++lookupSequence.current
     cancelStream.current?.()
@@ -163,11 +173,13 @@ export default function App() {
     setDictionary(null)
 
     cancelStream.current = openEntryStream(
-      { selection: w, sentence: currentSentence || w },
+      { selection: w, sentence: currentSentence || w, ...sourceContext, bypassCache: true },
       {
         onPartial: (p) => {
           if (sequence !== lookupSequence.current) return
           setEntry(prev => ({
+            ...prev,
+            ...p,
             word: p.word || w,
             reading: p.reading || prev?.reading || '',
             partOfSpeech: p.partOfSpeech || prev?.partOfSpeech || '',
@@ -187,6 +199,7 @@ export default function App() {
           if (sequence !== lookupSequence.current) return
           cancelStream.current = null
           setLoading(false)
+          setEntry(null)
           setLookupError(message)
         },
       },
@@ -194,7 +207,7 @@ export default function App() {
   }
 
   const onSave = async () => {
-    if (!entry || loading || saveState !== 'idle') return
+    if (!entry || loading || lookupError || saveState !== 'idle') return
     const sequence = lookupSequence.current
     setSaveError(null)
     setSaveState('saving')
@@ -202,18 +215,20 @@ export default function App() {
       type: 'save-card',
       payload: {
         entry,
-        selection: entry.word,
-        sentence: currentSentence || entry.word,
-        sentenceOffset: 0,
-        pageUrl: 'sidepanel',
-        pageTitle: 'SidePanel Lookup',
+        selection: originalSelection || query,
+        sentence: currentSentence || originalSelection || query,
+        ...sourceContext,
+        edits,
+        updateExisting: Boolean(savedContext),
         createdAt: Date.now(),
       },
     })
 
     if (sequence !== lookupSequence.current) return
     if (res.ok) {
+      setSavedContext(res.data.recordId)
       setSaveState(res.data.queued ? 'queued' : 'saved')
+      if (res.data.syncError) setSaveError('已保存在单词本；Anki：' + res.data.syncError)
       void refreshHistory()
     } else {
       setSaveState('idle')
@@ -236,7 +251,7 @@ export default function App() {
     cancelStream.current = null
     setLoading(false)
     setDictionary(null)
-    setEntry({
+    setEntry(item.entry ?? {
       word: item.word,
       reading: item.reading || '',
       partOfSpeech: '',
@@ -245,7 +260,29 @@ export default function App() {
     })
     setCurrentSentence(item.sentence || '')
     setQuery(item.word)
-    setSaveState(item.savedToAnki ? 'saved' : 'idle')
+    setOriginalSelection(item.selection ?? item.word)
+    setSourceContext({ sentenceOffset: item.sentenceOffset ?? -1, pageUrl: item.pageUrl ?? '', pageTitle: item.pageTitle ?? '' })
+    setEdits({})
+    setSavedContext(undefined)
+    setSaveState('idle')
+    setLookupError(null)
+    setSaveError(null)
+    setTab('current')
+  }
+
+  const onOpenLearning = (record: LearningRecord) => {
+    ++lookupSequence.current
+    cancelStream.current?.()
+    setLoading(false)
+    setDictionary(null)
+    setEntry(record.card.entry)
+    setOriginalSelection(record.card.selection)
+    setQuery(record.card.selection)
+    setCurrentSentence(record.card.sentence)
+    setSourceContext({ sentenceOffset: record.card.sentenceOffset, pageUrl: record.card.pageUrl, pageTitle: record.card.pageTitle })
+    setEdits(record.edits ?? {})
+    setSavedContext(record.id)
+    setSaveState('idle')
     setLookupError(null)
     setSaveError(null)
     setTab('current')
@@ -351,11 +388,13 @@ export default function App() {
           >
             查词历史 ({historyList.length})
           </button>
+          <button type="button" role="tab" aria-selected={tab === 'library'} tabIndex={tab === 'library' ? 0 : -1}
+            className={`sp-tab ${tab === 'library' ? 'active' : ''}`} onClick={() => setTab('library')}>单词本</button>
         </div>
       </header>
 
       <main className="sp-content">
-        {tab === 'current' ? (
+        {tab === 'library' ? <LearningLibrary onOpen={onOpenLearning} /> : tab === 'current' ? (
           entry ? (
             <div className="sp-card" aria-busy={loading}>
               <div className="sp-card-head">
@@ -387,6 +426,9 @@ export default function App() {
                   )}
                 </div>
               )}
+
+              <LearningDetails entry={entry} />
+              {!loading && <LearningEditor entry={entry} edits={edits} onChange={value => { setEdits(value); setSaveState('idle') }} />}
 
               {entry.memoryHook && (
                 <div className="sp-hook">
@@ -426,10 +468,10 @@ export default function App() {
                   {saveState === 'queued' && (
                     <>
                       <Check size={13} />
-                      已暂存，待同步
+                      已存入单词本，待同步
                     </>
                   )}
-                  {saveState === 'idle' && '保存'}
+                  {saveState === 'idle' && (savedContext ? '更新这条语境' : '存入单词本')}
                 </button>
 
                 <button
@@ -440,7 +482,7 @@ export default function App() {
                   onClick={doAiLookup}
                 >
                   <Sparkles size={13} />
-                  AI 释义
+                  {entry.generation ? '重新生成' : 'AI 详解'}
                 </button>
               </div>
               {saveError && <div className="sp-inline-error" role="alert"><AlertCircle size={14} /><span>{saveError}</span></div>}

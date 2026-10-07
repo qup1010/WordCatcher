@@ -6,6 +6,9 @@ import { z } from 'zod'
  * 注意这里刻意不包含原句：原句必须由内容脚本从 DOM 精确抓取，
  * 一旦交给 AI 复述，挖空时目标词就可能和句子对不上。
  */
+export interface LearningEdits { definition?: string, contextTranslation?: string, note?: string }
+export interface LearningRecord { id: string, card: CapturedCard, edits?: LearningEdits, savedAt: number, revision?: number, syncedAt?: number, syncError?: string }
+
 export const wordEntrySchema = z.object({
   word: z
     .string()
@@ -22,6 +25,13 @@ export const wordEntrySchema = z.object({
   contextTranslation: z
     .string()
     .describe('整句原句的翻译'),
+  inputKind: z.enum(['word', 'phrase', 'sentence']).optional(),
+  expression: z.string().optional(),
+  keyExplanation: z.string().optional(),
+  usageNote: z.string().optional(),
+  example: z.string().optional(),
+  exampleTranslation: z.string().optional(),
+  generation: z.object({ model: z.string(), promptVersion: z.string(), generatedAt: z.string() }).optional(),
   memoryHook: z
     .string()
     .optional()
@@ -32,6 +42,10 @@ export type WordEntry = z.infer<typeof wordEntrySchema>
 
 /** 一次完整的采集结果：AI 生成的部分 + 我们自己抓的事实部分 */
 export interface CapturedCard {
+  recordRevision?: number
+  recordId?: string
+  edits?: LearningEdits
+  updateExisting?: boolean
   entry: WordEntry
   /** 用户实际划选的文本，可能是变位形式 */
   selection: string
@@ -65,6 +79,9 @@ export const DEFAULT_AI_PROFILE: AiProfile = {
 
 /** 查词历史条目 */
 export interface HistoryItem {
+  entry?: WordEntry
+  selection?: string
+  sentenceOffset?: number
   id: string
   word: string
   reading?: string
@@ -73,6 +90,7 @@ export interface HistoryItem {
   pageTitle?: string
   pageUrl?: string
   timestamp: number
+  savedLocally?: boolean
   savedToAnki?: boolean
   source: 'dict' | 'mt' | 'ai'
 }
