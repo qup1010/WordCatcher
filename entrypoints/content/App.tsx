@@ -1,3 +1,4 @@
+import { ContextBlock, isSentenceSelection } from '@/lib/components/ContextBlock'
 import { LearningDetails, LearningEditor } from '@/lib/components/LearningDetails'
 import type { LearningEdits } from '@/lib/types'
 import { DictionaryView } from '@/lib/components/DictionaryView'
@@ -5,7 +6,6 @@ import { Check, Copy, Lightbulb, PanelRight, Pencil, Pin, Sparkles, Volume2, X, 
 import { browser } from '#imports'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PartialEntry } from '@/lib/ai'
-import { resolveOffset } from '@/lib/anki'
 import type { GoogleDictEntry, MtProvider } from '@/lib/machine-translate'
 import { MT_PROVIDER_LABELS } from '@/lib/machine-translate'
 import { openEntryStream, sendMessage } from '@/lib/messaging'
@@ -17,8 +17,8 @@ import { isTtsSupported, speak, stopSpeaking } from '@/lib/tts'
 import { canUseLookupShortcut } from '@/lib/ui-keyboard'
 import { DEFAULT_SETTINGS, type Settings, type WordEntry } from '@/lib/types'
 
-const PANEL_WIDTH = 372
-const QUICK_WIDTH = 356
+const PANEL_WIDTH = 400
+const QUICK_WIDTH = 400
 const QUICK_LONG_WIDTH = 440
 const PILL_WIDTH = 152
 const PILL_HEIGHT = 34
@@ -164,6 +164,7 @@ function EntryBody({
 }: EntryBodyProps) {
   // word 是第一个到的字段，但在它到之前先用划选原文占位，避免面板从一片空白开始
   const word = entry.word || ctx.selection
+  const sentenceMode = entry.inputKind === 'sentence' || isSentenceSelection(ctx.selection)
   const cleanReading = entry.reading?.replace(/^\/+|\/+$/g, '')
   const copyText = `${word}${cleanReading ? ` /${cleanReading}/` : ''}: ${entry.definition || ''}`
   const [editing, setEditing] = useState(false)
@@ -197,8 +198,8 @@ function EntryBody({
         }}
       >
         <div className="wc-head-main" onPointerDown={onStartDrag}>
-          <span className="wc-word">{word}</span>
-          {cleanReading && <span className="wc-reading">/{cleanReading}/</span>}
+          <span className={`wc-word ${sentenceMode ? 'wc-word-sentence' : ''}`}>{sentenceMode ? '句子翻译' : word}</span>
+          {!sentenceMode && cleanReading && <span className="wc-reading">/{cleanReading}/</span>}
           {ttsReady && !streaming && (
             <button
               type="button"
@@ -213,7 +214,7 @@ function EntryBody({
               <Volume2 size={15} />
             </button>
           )}
-          {entry.partOfSpeech && <span className="wc-pos">{entry.partOfSpeech}</span>}
+          {!sentenceMode && entry.partOfSpeech && <span className="wc-pos">{entry.partOfSpeech}</span>}
         </div>
 
         <div className="wc-head-actions">
@@ -307,6 +308,8 @@ function EntryBody({
         </div>
       )}
 
+      <ContextBlock key={ctx.sentence} sentence={ctx.sentence || ctx.selection} selection={ctx.selection} offset={ctx.offset}
+        translation={entry.contextTranslation?.trim() !== entry.definition?.trim() ? entry.contextTranslation : undefined} />
       <LearningDetails entry={entry} />
       {entry.memoryHook && (
         <div className="wc-hook-card">
@@ -320,12 +323,7 @@ function EntryBody({
         </div>
       )}
 
-      <div className="wc-context">
-        <div>{highlight(ctx)}</div>
-        {entry.contextTranslation && (
-          <div className="wc-context-trans">{entry.contextTranslation}</div>
-        )}
-      </div>
+
     </>
   )
 }
@@ -397,21 +395,6 @@ function placeAt(rect: DOMRect, width: number, height: number) {
   })
 }
 
-/** 标出原句里的目标词，用抽取时记下的精确偏移而不是重新查找 */
-function highlight(ctx: SelectionContext) {
-  const needle = ctx.selection.trim()
-  const at = resolveOffset(ctx.sentence, needle, ctx.offset)
-  if (at < 0) return ctx.sentence
-
-  return (
-    <>
-      {ctx.sentence.slice(0, at)}
-      <mark>{ctx.sentence.slice(at, at + needle.length)}</mark>
-      {ctx.sentence.slice(at + needle.length)}
-    </>
-  )
-}
-
 export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [phase, setPhase] = useState<Phase>({ kind: 'hidden' })
@@ -435,12 +418,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     const minLeft = 8
     const maxLeft = Math.max(minLeft, window.innerWidth - width - 8)
     const minTop = 8
-    const maxTop = Math.max(minTop, window.innerHeight - 60)
+    const maxTop = Math.max(minTop, window.innerHeight - Math.min(size.height || 60, window.innerHeight - 16) - 8)
     return {
       left: Math.max(minLeft, Math.min(maxLeft, left)),
       top: Math.max(minTop, Math.min(maxTop, top)),
     }
-  }, [])
+  }, [size.height])
 
   useEffect(() => {
     void getSettings().then(setSettings)
@@ -896,11 +879,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   // ── 快译迷你面板 ──────────────────────────────
   if (phase.kind === 'quick-loading' || phase.kind === 'quick' || phase.kind === 'quick-error') {
     const rawSelection = anchor.ctx.selection.trim()
-    const isLongText = rawSelection.length > 35 || rawSelection.includes('\n') || rawSelection.split(/\s+/).length > 5
+    const isLongText = isSentenceSelection(rawSelection)
     const panelWidth = isLongText ? QUICK_LONG_WIDTH : QUICK_WIDTH
     const pos = placeAt(anchor.rect, panelWidth, size.height || 90)
     const isDict = phase.kind === 'quick' && phase.mode === 'dict'
     const wordToSpeak = isDict ? phase.dict.headword : anchor.ctx.selection
+    const dictReading = isDict ? phase.dict.reading?.replace(/^\/+|\/+$/g, '') : ''
 
     const rawLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
     const rawTop = fixedPos ? fixedPos.top : (pos.top + dragOffset.y)
@@ -916,7 +900,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         <div
           className={`wc-panel wc-panel-quick ${isLongText ? 'wc-panel-long' : ''}`}
           ref={panelRef}
-          style={{ maxHeight: pos.maxHeight }}
+          style={{ maxHeight: Math.min(pos.maxHeight, window.innerHeight - finalTop - 8) }}
           role="dialog"
           aria-label={isLongText ? '快速翻译' : `「${anchor.ctx.selection}」的快速查词`}
         >
@@ -941,7 +925,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               <div className="wc-head-main" onPointerDown={onStartDrag}>
                 <span className="wc-word-wrap">
                   {isLongText ? (
-                    <span className="wc-head-title">译文</span>
+                    <span className="wc-head-title">句子翻译</span>
                   ) : (
                     <span className="wc-word wc-word-sm">
                       {isDict ? phase.dict.headword : anchor.ctx.selection}
@@ -962,9 +946,9 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                     </button>
                   )}
                 </span>
-                {!isLongText && isDict && phase.dict.reading && (
+                {!isLongText && isDict && dictReading && (
                   <span className="wc-reading">
-                    /{phase.dict.reading}/
+                    /{dictReading}/
                   </span>
                 )}
               </div>
@@ -1017,7 +1001,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   <CopyBtn
                     text={
                       isDict
-                        ? `${phase.dict.headword}${phase.dict.reading ? ` /${phase.dict.reading}/` : ''}: ${phase.dict.coreMeanings.join('； ')}`
+                        ? `${phase.dict.headword}${dictReading ? ` /${dictReading}/` : ''}: ${phase.dict.coreMeanings.join('； ')}`
                         : `${anchor.ctx.selection}: ${phase.mode === 'mt' ? phase.translation : ''}`
                     }
                   />
@@ -1047,10 +1031,10 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             {/* ── 离线词典视图 ── */}
             {phase.kind === 'quick' && phase.mode === 'dict' && (
               <div className="wc-quick-body">
-                <DictionaryView key={phase.dict.headword} result={phase.dict} />
-                {anchor.ctx.sentence && anchor.ctx.sentence !== anchor.ctx.selection && (
-                  <div className="wc-context">{highlight(anchor.ctx)}</div>
-                )}
+                <DictionaryView key={phase.dict.headword} result={phase.dict} context={
+                  anchor.ctx.sentence && anchor.ctx.sentence !== anchor.ctx.selection
+                    ? <ContextBlock key={anchor.ctx.sentence} sentence={anchor.ctx.sentence} selection={anchor.ctx.selection} offset={anchor.ctx.offset} /> : undefined
+                } />
 
                 {phase.dict.memoryHook && (
                   <div className="wc-hook-card">
@@ -1086,6 +1070,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 <div className={`wc-def ${isLongText ? 'wc-def-long' : ''}`}>
                   {phase.translation}
                 </div>
+                <ContextBlock key={anchor.ctx.sentence} sentence={anchor.ctx.sentence || anchor.ctx.selection} selection={anchor.ctx.selection} offset={anchor.ctx.offset} />
                 {!isLongText && phase.dictionary && phase.dictionary.length > 0 && (
                   <div className="wc-dict">
                     {phase.dictionary.map(entry => (
@@ -1172,7 +1157,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       <div
         className="wc-panel"
         ref={panelRef}
-        style={{ maxHeight: pos.maxHeight }}
+        style={{ maxHeight: Math.min(pos.maxHeight, window.innerHeight - finalTop - 8) }}
         role="dialog"
         aria-label={`「${anchor.ctx.selection}」的词条`}
       >
@@ -1236,7 +1221,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         {phase.kind === 'result' && (
           <>
             <EntryBody
-              entry={overrideDef ? { ...phase.entry, definition: overrideDef } : phase.entry}
+              entry={{ ...phase.entry, ...learningEdits, ...(overrideDef !== null ? { definition: overrideDef } : {}) }}
               ctx={anchor.ctx}
               ttsReady={ttsReady}
               onSpeak={speakText}

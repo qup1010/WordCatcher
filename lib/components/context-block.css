@@ -1,0 +1,8 @@
+.translation-context { margin: 16px 0; padding: 12px 0 12px 12px; border-left: 2px solid var(--hairline); color: var(--ink); font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
+.translation-context-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 5px; color: var(--ink-faint); font: 11px/1.5 var(--font-sans); }
+.translation-context-head button { border: 0; padding: 2px 0; background: transparent; color: var(--teal); font: inherit; cursor: pointer; }
+.translation-context-original { white-space: pre-wrap; }
+.translation-context mark { padding: 0 1px; color: var(--amber); background: transparent; text-decoration: underline; text-decoration-color: var(--amber); text-underline-offset: 3px; font-weight: 600; }
+.translation-context-translation { margin-top: 9px; color: var(--ink-soft); white-space: pre-wrap; }
+.translation-context-label { display: block; margin-bottom: 3px; font-size: 11px; color: var(--ink-faint); }
+.translation-context button:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }

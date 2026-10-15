@@ -173,3 +173,17 @@ describe('extractContext', () => {
     expect(ctx.sentence.length).toBeGreaterThan(0)
   })
 })
+
+it.each(['convenience ', ' convenience', ' convenience '])('preserves spaces when browser selection includes whitespace: %s', selected => {
+  const ctx = extractContext(selectWord('<p>The convenience of a familiar place.</p>', selected))!
+  expect(ctx).toEqual({ selection: 'convenience', sentence: 'The convenience of a familiar place.', offset: 4 })
+})
+
+it('does not include adjacent title or paragraph when a full paragraph ends at the next block', () => {
+  document.body.innerHTML = '<article><h1>Title</h1><p>The original sentence.</p><p>Unrelated paragraph.</p></article>'
+  const paragraphs = document.querySelectorAll('p')
+  const range = document.createRange()
+  range.setStart(paragraphs[0].firstChild!, 0)
+  range.setEnd(paragraphs[1], 0)
+  expect(extractContext(range)).toEqual({ selection: 'The original sentence.', sentence: 'The original sentence.', offset: 0 })
+})

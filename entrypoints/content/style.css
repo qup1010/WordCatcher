@@ -1,3 +1,4 @@
+@import '@/lib/components/context-block.css';
 @import '@/lib/components/dictionary-view.css';
 @import '@/assets/tokens.css';
 
@@ -124,7 +125,7 @@
 }
 
 .wc-panel {
-  width: 372px;
+  width: 400px;
   position: relative;
   /* max-height 由 place() 按视口剩余空间算好后从行内传进来，这里只是兜底 */
   max-height: 480px;
@@ -174,7 +175,7 @@
 .wc-panel::-webkit-scrollbar-thumb:hover { background-color: var(--ink-faint); }
 
 .wc-panel-quick {
-  width: 356px;
+  width: 400px;
   padding: 12px 16px 0;
 }
 
@@ -964,3 +965,17 @@
 .wc-head-btn, .wc-speak { min-width: 28px; min-height: 28px; }
 .wc-actions { flex-wrap: wrap; row-gap: 8px; }
 .wc-btn { min-height: 34px; }
+
+/* 词头独占一行，读音与工具保持次级；长内容不挤压标题。 */
+.wc-head { flex-wrap: nowrap; }
+.wc-head-main { flex: 1; min-width: 0; }
+.wc-head-main > .wc-word { flex-basis: 100%; }
+.wc-word-sm { font-size: 23px; line-height: 1.35; }
+.wc-word-sentence { font: 600 15px/1.5 var(--font-sans); color: var(--teal); }
+.wc-quick-toolbar { margin-bottom: 12px; }
+.wc-panel .wc-actions { position: sticky; bottom: -13px; z-index: 2; background: var(--card); padding-top: 12px; padding-bottom: 12px; border-top: 1px solid var(--hairline); }
+.wc-panel-quick .wc-actions { bottom: 0; }
+.wc-panel .learning-details { border-top: 1px solid var(--hairline); padding-top: 8px; }
+.wc-def { white-space: pre-wrap; }
+
+.wc-head-main > .wc-word-sentence { flex-basis: auto; }

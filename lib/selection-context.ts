@@ -134,6 +134,11 @@ export function extractContext(range: Range): SelectionContext | null {
   const selection = collapseWhitespace(range.toString())
   if (!selection) return null
 
+  // 浏览器整段选择的终点可能落到下一段起点；跨块时不要拼接标题和邻段。
+  if (findBlockAncestor(range.startContainer) !== findBlockAncestor(range.endContainer)) {
+    return { selection, sentence: selection, offset: 0 }
+  }
+
   const block = findBlockAncestor(range.commonAncestorContainer)
   const blockText = block.textContent ?? ''
 
@@ -166,8 +171,8 @@ export function extractContext(range: Range): SelectionContext | null {
   const after = collapseWhitespace(rawAfter)
 
   // collapseWhitespace 会 trim 掉两端，被吃掉的分词空格要补回来
-  const gapBefore = before && middle && /\s$/.test(rawBefore) ? ' ' : ''
-  const gapAfter = middle && after && /^\s/.test(rawAfter) ? ' ' : ''
+  const gapBefore = before && middle && (/\s$/.test(rawBefore) || /^\s/.test(rawSel)) ? ' ' : ''
+  const gapAfter = middle && after && (/^\s/.test(rawAfter) || /\s$/.test(rawSel)) ? ' ' : ''
 
   const sentence = before + gapBefore + middle + gapAfter + after
   if (!sentence) return { selection, sentence: selection, offset: 0 }

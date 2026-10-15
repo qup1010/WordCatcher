@@ -1,3 +1,4 @@
+import { ContextBlock, isSentenceSelection } from '@/lib/components/ContextBlock'
 import { LearningDetails, LearningEditor } from '@/lib/components/LearningDetails'
 import { LearningLibrary } from '@/lib/components/LearningLibrary'
 import { DictionaryView } from '@/lib/components/DictionaryView'
@@ -37,19 +38,6 @@ function formatRelativeTime(ts: number): string {
   if (hours < 24) return `${hours} 小时前`
   const days = Math.floor(hours / 24)
   return `${days} 天前`
-}
-
-function highlightSentence(sentence: string, selection: string, offset = -1) {
-  const needle = selection.trim()
-  const at = resolveOffset(sentence, needle, offset)
-  if (at < 0) return sentence
-  return (
-    <>
-      {sentence.slice(0, at)}
-      <mark>{sentence.slice(at, at + needle.length)}</mark>
-      {sentence.slice(at + needle.length)}
-    </>
-  )
 }
 
 export default function App() {
@@ -401,6 +389,8 @@ export default function App() {
     }
   }
 
+  const sentenceMode = entry?.inputKind === 'sentence' || isSentenceSelection(sourceMeta?.selection || entry?.word || '')
+  const contextBlock = entry && (currentSentence || sentenceMode) ? <ContextBlock key={currentSentence} sentence={currentSentence || sourceMeta?.selection || entry.word} selection={sourceMeta?.selection || entry.word} offset={sourceMeta?.sentenceOffset} translation={(edits.contextTranslation ?? entry.contextTranslation)?.trim() !== (edits.definition ?? entry.definition)?.trim() ? edits.contextTranslation ?? entry.contextTranslation : undefined} /> : null
   const cleanReading = entry?.reading?.replace(/^\/+|\/+$/g, '')
 
   return (
@@ -507,8 +497,8 @@ export default function App() {
             <div className="sp-card" aria-busy={loading}>
               <div className="sp-card-head">
                 <div className="sp-card-word-wrap">
-                  <span className="sp-card-word">{entry.word}</span>
-                  {cleanReading && <span className="sp-card-reading">/{cleanReading}/</span>}
+                  <span className={`sp-card-word ${sentenceMode ? 'sp-card-word-sentence' : ''}`}>{sentenceMode ? '句子翻译' : entry.word}</span>
+                  {!sentenceMode && cleanReading && <span className="sp-card-reading">/{cleanReading}/</span>}
                   {isTtsSupported() && (
                     <button
                       type="button"
@@ -520,29 +510,13 @@ export default function App() {
                       <Volume2 size={15} />
                     </button>
                   )}
-                  {entry.partOfSpeech && <span className="sp-card-pos">{entry.partOfSpeech}</span>}
+                  {!dictionary && !sentenceMode && entry.partOfSpeech && <span className="sp-card-pos">{entry.partOfSpeech}</span>}
                 </div>
               </div>
 
-              {dictionary ? <DictionaryView key={dictionary.headword} result={dictionary} /> : <div className="sp-card-def">{entry.definition}</div>}
-
-              {currentSentence && (
-                <div className="sp-sentence-box">
-                  <div>
-                    {highlightSentence(
-                      currentSentence,
-                      sourceMeta?.selection || entry.word,
-                      sourceMeta?.sentenceOffset ?? -1,
-                    )}
-                  </div>
-                  {entry.contextTranslation && (
-                    <div className="sp-sentence-trans">{entry.contextTranslation}</div>
-                  )}
-                </div>
-              )}
+              {dictionary ? <DictionaryView key={dictionary.headword} result={dictionary} context={contextBlock} /> : <><div className="sp-card-def">{edits.definition ?? entry.definition}</div>{contextBlock}</>}
 
               <LearningDetails entry={entry} />
-              {!loading && <LearningEditor entry={entry} edits={edits} onChange={value => { setEdits(value); setSaveState('idle') }} />}
 
               {entry.memoryHook && (
                 <div className="sp-hook">
@@ -550,6 +524,8 @@ export default function App() {
                   <div>{entry.memoryHook}</div>
                 </div>
               )}
+
+              {!loading && <LearningEditor entry={entry} edits={edits} onChange={value => { setEdits(value); setSaveState('idle') }} />}
 
               {loading && (
                 <div className="sp-progress" role="status">
