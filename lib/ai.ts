@@ -11,6 +11,7 @@ export function buildSystemPrompt(explainLanguage: string): string {
 3. partOfSpeech: 词性简写（如 n. / v. / adj. / adv. / phr.）。
 4. definition: 仅解释该词在【当前语境】中的含义，一句话精准释义（使用${explainLanguage}）。
 5. contextTranslation: 整句原句的自然通顺翻译（使用${explainLanguage}）。
+6. memoryHook: 简短的词根拆解或联想记忆线索（使用${explainLanguage}，可选）。
 
 请以 JSON 格式输出包含上述字段的对象。`
   // 末句的 "JSON" 是必需的：部分服务在 response_format 为 json_object 时要求提示词中包含 json
@@ -165,6 +166,3 @@ export async function streamEntry(params: {
     throw new AiError(friendlyMessage(err))
   }
 }
-
-// 一次性返回的 generateEntry 已删除：内容脚本全部走 streamEntry，
-// 留着两条并行的生成路径只会让改提示词时漏改一条。

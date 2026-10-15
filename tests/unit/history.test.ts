@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { __resetStorage } from '../helpers/wxt-imports-stub'
-import { addHistory, clearHistory, markHistorySaved, readHistory, removeHistory } from '../../lib/history'
+import { addHistory, clearHistory, importHistoryItems, markHistorySaved, readHistory, removeHistory } from '../../lib/history'
 
 beforeEach(() => __resetStorage())
 
@@ -20,17 +20,44 @@ describe('history module', () => {
     expect(list[0].savedToAnki).toBe(false)
   })
 
-  it('updates existing word and brings it to front without duplicate', async () => {
-    await addHistory({ word: 'apple', definition: '苹果 1', source: 'dict' })
+  it('updates existing word, preserves context metadata, and brings it to front without duplicate', async () => {
+    await addHistory({
+      word: 'apple',
+      selection: 'apples',
+      partOfSpeech: 'n.',
+      definition: '苹果 1',
+      sentence: 'I ate two apples.',
+      sentenceOffset: 10,
+      pageUrl: 'https://example.com',
+      pageTitle: 'Example',
+      source: 'dict',
+    })
     await addHistory({ word: 'banana', definition: '香蕉', source: 'dict' })
-    await addHistory({ word: 'Apple', definition: '苹果 2', source: 'ai' })
+    await addHistory({ word: 'Apple', definition: '苹果 2', contextTranslation: '我吃了两个苹果。', source: 'ai' })
 
     const list = await readHistory()
     expect(list).toHaveLength(2)
     expect(list[0].word).toBe('Apple')
     expect(list[0].definition).toBe('苹果 2')
+    expect(list[0].partOfSpeech).toBe('n.')
+    expect(list[0].sentence).toBe('I ate two apples.')
+    expect(list[0].sentenceOffset).toBe(10)
+    expect(list[0].contextTranslation).toBe('我吃了两个苹果。')
+    expect(list[0].pageUrl).toBe('https://example.com')
     expect(list[0].source).toBe('ai')
     expect(list[1].word).toBe('banana')
+  })
+
+  it('imports history items and deduplicates by word', async () => {
+    await addHistory({ word: 'apple', definition: '旧释义', timestamp: 100, source: 'dict' })
+    const merged = await importHistoryItems([
+      { id: '1', word: 'apple', definition: '新释义', timestamp: 200, source: 'ai', savedToAnki: true },
+      { id: '2', word: 'pear', definition: '梨', timestamp: 150, source: 'dict' },
+    ])
+    expect(merged).toHaveLength(2)
+    expect(merged[0].word).toBe('apple')
+    expect(merged[0].definition).toBe('新释义')
+    expect(merged[0].savedToAnki).toBe(true)
   })
 
   it('caps history at maximum limit', async () => {
