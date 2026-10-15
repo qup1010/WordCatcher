@@ -1,13 +1,13 @@
-import { Download, Inbox, Trash2, Upload } from 'lucide-react'
+import { Download, Inbox, Laptop, Trash2, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { backupFileName, buildBackup, describeSettings, parseBackup } from '@/lib/backup'
 import { sendMessage } from '@/lib/messaging'
 import { saveSettings } from '@/lib/settings'
 import type { CapturedCard } from '@/lib/types'
 import { Section } from '../components/Section'
+import { StatusChip, Switch } from '../components/controls'
 import type { SectionProps, Status } from './types'
 
-/** 队列条目的时间戳，只显示到分钟——秒对"这词什么时候划的"没有意义 */
 function formatTime(ms: number): string {
   if (!ms) return ''
   const d = new Date(ms)
@@ -21,6 +21,7 @@ export function DataSection({ s, onChange }: SectionProps) {
   const [cacheSize, setCacheSize] = useState(0)
   const [cacheNote, setCacheNote] = useState<string | null>(null)
   const [backupStatus, setBackupStatus] = useState<Status>({ kind: 'idle' })
+  const [desktopAlive, setDesktopAlive] = useState<boolean | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const refresh = () => {
@@ -30,11 +31,12 @@ export function DataSection({ s, onChange }: SectionProps) {
     void sendMessage({ type: 'cache-stats' }).then((res) => {
       if (res.ok) setCacheSize(res.data.size)
     })
+    void sendMessage({ type: 'check-desktop-bridge' }).then((res) => {
+      if (res.ok) setDesktopAlive(res.data.alive)
+    })
   }
 
   useEffect(refresh, [])
-
-  // ── 待写队列 ──
 
   const onFlush = async () => {
     setQueueStatus({ kind: 'busy' })
@@ -47,7 +49,6 @@ export function DataSection({ s, onChange }: SectionProps) {
     const { written, dropped, remaining } = res.data
     refresh()
     setQueueStatus(remaining > 0
-      // 还有剩就是写到一半 Anki 又断了，别报成成功
       ? { kind: 'err', text: `写入 ${written} 张后连接中断，还剩 ${remaining} 张。确认 Anki 在运行后再试。` }
       : { kind: 'ok', text: `写入 ${written} 张${dropped > 0 ? `，跳过 ${dropped} 张重复的` : ''}。` })
   }
@@ -65,8 +66,6 @@ export function DataSection({ s, onChange }: SectionProps) {
     }
   }
 
-  // ── AI 缓存 ──
-
   const onClearCache = async () => {
     const res = await sendMessage({ type: 'clear-cache' })
     if (!res.ok) return
@@ -76,11 +75,11 @@ export function DataSection({ s, onChange }: SectionProps) {
       : '缓存本来就是空的。')
   }
 
-  // ── 配置备份 ──
-
-  const onExport = () => {
+  const onExport = async () => {
     const exportedAt = new Date().toISOString()
-    const blob = new Blob([JSON.stringify(buildBackup(s, exportedAt), null, 2)], {
+    const historyRes = await sendMessage({ type: 'history-list' })
+    const history = historyRes.ok ? historyRes.data : undefined
+    const blob = new Blob([JSON.stringify(buildBackup(s, exportedAt, history), null, 2)], {
       type: 'application/json',
     })
 
@@ -91,7 +90,7 @@ export function DataSection({ s, onChange }: SectionProps) {
     a.click()
     URL.revokeObjectURL(url)
 
-    setBackupStatus({ kind: 'ok', text: `已导出。文件里包含明文 API key，注意保管。` })
+    setBackupStatus({ kind: 'ok', text: `已导出配置与最近查词记录。文件里包含明文 API key，注意保管。` })
   }
 
   const onImportFile = async (file: File) => {
@@ -103,10 +102,15 @@ export function DataSection({ s, onChange }: SectionProps) {
       return
     }
 
-    // 先落盘再更新界面：导入的是整份配置，中途出错的话界面和存储会对不上
     await saveSettings(result.settings)
+    if (result.history && result.history.length > 0) {
+      await sendMessage({ type: 'history-import', payload: { items: result.history } })
+    }
     onChange(result.settings)
-    setBackupStatus({ kind: 'ok', text: `已导入：${describeSettings(result.settings)}` })
+    setBackupStatus({
+      kind: 'ok',
+      text: `已导入：${describeSettings(result.settings, result.history?.length ?? 0)}`,
+    })
   }
 
   return (
@@ -114,8 +118,43 @@ export function DataSection({ s, onChange }: SectionProps) {
       id="sec-data"
       index={5}
       title="数据与维护"
-      intro="查看待同步卡片、清理缓存或备份配置。"
+      intro="管理桌面端联动、查看待同步卡片、清理缓存或备份配置。"
     >
+      {/* ── Windows 桌面版联动 ── */}
+      <div className="block">
+        <div className="block-head">
+          <Laptop size={14} className="inline-icon" />
+          <strong>Windows 桌面版联动</strong>
+          {desktopAlive !== null && (
+            <StatusChip ok={desktopAlive} okText="桌面端在线" badText="未检测到桌面端" />
+          )}
+        </div>
+        <p className="block-hint">
+          开启后，在网页中点击保存生词时，除了写入 Anki，还会自动同步存入 Windows 桌面版的本地 SQLite 生词库。
+        </p>
+        <div className="field" style={{ marginTop: 12 }}>
+          <span>自动同步至桌面端</span>
+          <Switch
+            checked={s.desktopBridge?.enabled ?? true}
+            onChange={enabled => onChange({
+              ...s,
+              desktopBridge: { ...s.desktopBridge, enabled },
+            })}
+          />
+        </div>
+        <label className="field" style={{ marginTop: 10 }}>
+          <span>桥接地址</span>
+          <input
+            value={s.desktopBridge?.url ?? 'http://127.0.0.1:18765'}
+            placeholder="http://127.0.0.1:18765"
+            onChange={e => onChange({
+              ...s,
+              desktopBridge: { ...s.desktopBridge, url: e.target.value },
+            })}
+          />
+        </label>
+      </div>
+
       {/* ── 待写队列 ── */}
       <div className="block">
         <div className="block-head">
@@ -187,17 +226,17 @@ export function DataSection({ s, onChange }: SectionProps) {
       {/* ── 配置备份 ── */}
       <div className="block">
         <div className="block-head">
-          <strong>配置备份</strong>
+          <strong>配置与历史备份</strong>
         </div>
         <p className="block-hint">
-          换机器时把配置整份搬过去。
+          换机器时把配置与查词记录整份搬过去（同时支持直接导入 Windows 桌面版的设置文件）。
           <strong className="warn-inline">导出的文件里包含明文 API key</strong>
           ，和 key 本身一样敏感，别随手发出去。
         </p>
         <div className="block-actions">
-          <button className="btn btn-icon" onClick={onExport}>
+          <button className="btn btn-icon" onClick={() => void onExport()}>
             <Download size={14} />
-            <span>导出配置</span>
+            <span>导出配置与记录</span>
           </button>
           <button
             className="btn btn-icon"
@@ -214,7 +253,6 @@ export function DataSection({ s, onChange }: SectionProps) {
             hidden
             onChange={(e) => {
               const file = e.target.files?.[0]
-              // 清空 value，否则连续导入同一个文件不会触发 change
               e.target.value = ''
               if (file) void onImportFile(file)
             }}
