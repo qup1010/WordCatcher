@@ -1,10 +1,10 @@
 import { normalizeSettings } from './settings'
-import type { Settings } from './types'
+import type { HistoryItem, Settings } from './types'
 
 /**
- * 配置的导出与导入。
+ * 配置与查词历史的导出与导入。
  *
- * 用途是换机器：把一台电脑上配好的端点、key、牌组、语言原样搬到另一台。
+ * 用途是换机器或与桌面端互通：把配好的端点、key、牌组、语言以及最近查词记录原样迁移。
  *
  * 注意导出的文件里包含明文 API key——这是它有用的前提（不带 key 就还得手输一遍），
  * 但也意味着这个文件和 key 本身一样敏感，界面上必须说清楚。
@@ -19,17 +19,30 @@ export interface Backup {
   version: number
   exportedAt: string
   settings: Settings
+  history?: HistoryItem[]
 }
 
 export type ParseResult =
-  | { ok: true, settings: Settings }
+  | { ok: true, settings: Settings, history?: HistoryItem[] }
   | { ok: false, error: string }
 
-/** settings 里认得出的顶层字段，用来判断"这看起来是不是我们的配置" */
-const KNOWN_KEYS = ['ai', 'anki', 'tts', 'mt', 'explainLanguage', 'triggerMode']
+/** settings 里认得出的顶层字段（含插件端 camelCase 与桌面端 PascalCase），用来判断"这看起来是不是我们的配置" */
+const KNOWN_KEYS = [
+  'ai',
+  'anki',
+  'tts',
+  'mt',
+  'explainLanguage',
+  'triggerMode',
+  'TranslationProfiles',
+  'ExplainLanguage',
+  'Anki',
+]
 
-export function buildBackup(settings: Settings, exportedAt: string): Backup {
-  return { format: FORMAT, version: VERSION, exportedAt, settings }
+export function buildBackup(settings: Settings, exportedAt: string, history?: HistoryItem[]): Backup {
+  return history && history.length > 0
+    ? { format: FORMAT, version: VERSION, exportedAt, settings, history }
+    : { format: FORMAT, version: VERSION, exportedAt, settings }
 }
 
 export function backupFileName(exportedAt: string): string {
@@ -38,7 +51,7 @@ export function backupFileName(exportedAt: string): string {
 }
 
 function looksLikeSettings(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   return KNOWN_KEYS.some(k => k in (value as Record<string, unknown>))
 }
 
@@ -59,7 +72,7 @@ export function parseBackup(text: string): ParseResult {
     return { ok: false, error: '这不是一个有效的 JSON 文件，可能选错了文件或者文件损坏。' }
   }
 
-  if (!raw || typeof raw !== 'object') {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return { ok: false, error: '文件内容不是一个配置对象。' }
   }
 
@@ -73,10 +86,11 @@ export function parseBackup(text: string): ParseResult {
     if (!looksLikeSettings(obj.settings)) {
       return { ok: false, error: '文件格式认得，但里面没有配置内容，可能是导出时中断了。' }
     }
-    return { ok: true, settings: normalizeSettings(obj.settings) }
+    const history = Array.isArray(obj.history) ? (obj.history as HistoryItem[]) : undefined
+    return { ok: true, settings: normalizeSettings(obj.settings), ...(history ? { history } : {}) }
   }
 
-  // 没有信封：可能是手写的、或者从旧版本 storage 里直接拷出来的，认得出字段就收
+  // 没有信封：可能是手写的、或者从桌面端 settings.json / 旧版本 storage 里直接拷出来的
   if (looksLikeSettings(obj)) {
     return { ok: true, settings: normalizeSettings(obj) }
   }
@@ -85,8 +99,9 @@ export function parseBackup(text: string): ParseResult {
 }
 
 /** 导入后给用户一句能核对的话，让他知道到底导进来了什么 */
-export function describeSettings(s: Settings): string {
+export function describeSettings(s: Settings, historyCount = 0): string {
   const profiles = s.ai.profiles.length
   const withKey = s.ai.profiles.filter(p => p.apiKey.trim()).length
-  return `${profiles} 套 AI 配置（${withKey} 套带 key）· 牌组「${s.anki.deckName}」· 释义语言 ${s.explainLanguage}`
+  const historyPart = historyCount > 0 ? ` · 历史词条 ${historyCount} 条` : ''
+  return `${profiles} 套 AI 配置（${withKey} 套带 key）· 牌组「${s.anki.deckName}」· 释义语言 ${s.explainLanguage}${historyPart}`
 }

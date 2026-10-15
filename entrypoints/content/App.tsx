@@ -164,7 +164,8 @@ function EntryBody({
 }: EntryBodyProps) {
   // word 是第一个到的字段，但在它到之前先用划选原文占位，避免面板从一片空白开始
   const word = entry.word || ctx.selection
-  const copyText = `${word}${entry.reading ? ` /${entry.reading}/` : ''}: ${entry.definition || ''}`
+  const cleanReading = entry.reading?.replace(/^\/+|\/+$/g, '')
+  const copyText = `${word}${cleanReading ? ` /${cleanReading}/` : ''}: ${entry.definition || ''}`
   const [editing, setEditing] = useState(false)
   const [defDraft, setDefDraft] = useState(entry.definition || '')
 
@@ -197,7 +198,7 @@ function EntryBody({
       >
         <div className="wc-head-main" onPointerDown={onStartDrag}>
           <span className="wc-word">{word}</span>
-          {entry.reading && <span className="wc-reading">/{entry.reading}/</span>}
+          {cleanReading && <span className="wc-reading">/{cleanReading}/</span>}
           {ttsReady && !streaming && (
             <button
               type="button"
@@ -546,6 +547,10 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       onDone: (entry) => {
         streamRef.current = null
         setPhase({ kind: 'result', entry })
+        browser.runtime.sendMessage({
+          type: 'sidepanel-sync-entry',
+          payload: { entry, selection: ctx.selection, sentence: ctx.sentence, sentenceOffset: ctx.offset, pageUrl: location.href, pageTitle: document.title },
+        }).catch(() => {})
       },
       onError: (message) => {
         streamRef.current = null
@@ -565,6 +570,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         text: ctx.selection,
         context: {
           sentence: ctx.sentence,
+          sentenceOffset: ctx.offset,
           pageTitle: document.title,
           pageUrl: location.href,
         },
@@ -635,6 +641,11 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       return
     }
 
+    browser.runtime.sendMessage({
+      type: 'sidepanel-sync-saved',
+      payload: { word: entry.word, queued: Boolean(res.data.queued) },
+    }).catch(() => {})
+
     if (res.data.queued) {
       setSave({ kind: 'queued', pending: res.data.pending ?? 1 })
       return
@@ -642,7 +653,8 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
     setSave({ kind: 'saved' })
     setDupe('yes')
-  }, [anchor, dismiss, dupe])
+    if (!pinned) setTimeout(dismiss, 1200)
+  }, [anchor, dismiss, dupe, pinned])
 
   const onSave = useCallback(async () => {
     if (phase.kind !== 'result') return
@@ -758,7 +770,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         // 联动广播给侧边栏（如果已开）
         browser.runtime.sendMessage({
           type: 'sidepanel-sync-word',
-          payload: { word: ctx.selection, sentence: ctx.sentence, sentenceOffset: ctx.offset, pageUrl: location.href, pageTitle: document.title },
+          payload: { word: ctx.selection, selection: ctx.selection, sentence: ctx.sentence, sentenceOffset: ctx.offset, pageUrl: location.href, pageTitle: document.title },
         }).catch(() => {})
 
         if (!pinned) {

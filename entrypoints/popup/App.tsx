@@ -48,8 +48,12 @@ export default function App() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
     const res = await sendMessage({ type: 'history-list' })
-    if (res.ok) { setHistoryList(res.data); setHistoryError(null) }
-    else setHistoryError(res.error)
+    if (res.ok) {
+      setHistoryList(res.data)
+      setHistoryError(null)
+    } else {
+      setHistoryError(res.error)
+    }
     setHistoryLoading(false)
   }, [])
 
@@ -58,7 +62,6 @@ export default function App() {
       setS(v)
       setLoaded(true)
     }).catch(() => setLoadError(true))
-    // 设置页可能同时开着，跟着它一起变
     const stop = watchSettings(setS)
     void sendMessage({ type: 'check-anki' }).then(res =>
       setAnki(res.ok ? { kind: 'ok', version: res.data.version } : { kind: 'err' }),
@@ -120,14 +123,15 @@ export default function App() {
         entry: {
           word: item.word,
           reading: item.reading || '',
-          partOfSpeech: '',
+          partOfSpeech: item.partOfSpeech || '',
           definition: item.definition,
-          contextTranslation: '',
+          contextTranslation: item.contextTranslation || '',
+          memoryHook: item.memoryHook,
         },
-        selection: item.word,
+        selection: item.selection || item.word,
         sentence: item.sentence || item.word,
-        sentenceOffset: 0,
-        pageUrl: item.pageUrl || 'popup',
+        sentenceOffset: item.sentenceOffset ?? -1,
+        pageUrl: item.pageUrl || '',
         pageTitle: item.pageTitle || 'Popup History',
         createdAt: Date.now(),
       },
@@ -168,10 +172,6 @@ export default function App() {
     }
   }
 
-  /**
-   * 立刻落盘，不做防抖：popup 随时可能被关掉，晚一步改动就丢了。
-   * 先乐观更新界面，写失败再回滚。
-   */
   const commit = useCallback((next: Settings) => {
     const prev = s
     setSaveError(null)
@@ -192,11 +192,14 @@ export default function App() {
     commit({ ...s, mt: { ...s.mt, provider } })
   }
 
-  // 读到真实配置前先不渲染，否则会闪一下默认值再跳成实际值
-  if (!loaded) return <div className="pop pop-blank" role={loadError ? 'alert' : 'status'}>
-    <strong>{loadError ? '无法读取设置' : '正在加载…'}</strong>
-    {loadError && <button type="button" className="btn" onClick={() => window.location.reload()}>重新加载</button>}
-  </div>
+  if (!loaded) {
+    return (
+      <div className="pop pop-blank" role={loadError ? 'alert' : 'status'}>
+        <strong>{loadError ? '无法读取设置' : '正在加载…'}</strong>
+        {loadError && <button type="button" className="btn" onClick={() => window.location.reload()}>重新加载</button>}
+      </div>
+    )
+  }
 
   const aiReady = isAiConfigured(s)
   const active = activeAiProfile(s)
@@ -237,7 +240,7 @@ export default function App() {
           type="button"
           role="tab"
           aria-selected={tab === 'status'}
-            tabIndex={tab === 'status' ? 0 : -1}
+          tabIndex={tab === 'status' ? 0 : -1}
           className={`pop-tab ${tab === 'status' ? 'active' : ''}`}
           onClick={() => setTab('status')}
         >
@@ -247,7 +250,7 @@ export default function App() {
           type="button"
           role="tab"
           aria-selected={tab === 'history'}
-            tabIndex={tab === 'history' ? 0 : -1}
+          tabIndex={tab === 'history' ? 0 : -1}
           className={`pop-tab ${tab === 'history' ? 'active' : ''}`}
           onClick={() => {
             setTab('history')
@@ -262,7 +265,6 @@ export default function App() {
       {tab === 'status' ? (
         <>
           <ul className="checks">
-            {/* ── 1. AI 语境释义 ── */}
             <li className={aiReady ? 'ok' : 'bad'}>
               <span className="dot" />
               <div className="check-body">
@@ -297,7 +299,6 @@ export default function App() {
               </div>
             </li>
 
-            {/* ── 2. 离线词典 ── */}
             <li className={dictReady ? 'ok' : 'wait'}>
               <span className="dot" />
               <div className="check-body">
@@ -317,7 +318,6 @@ export default function App() {
               </div>
             </li>
 
-            {/* ── 3. 快速翻译 ── */}
             <li className="ok">
               <span className="dot" />
               <div className="check-body">
@@ -342,7 +342,6 @@ export default function App() {
               </div>
             </li>
 
-            {/* ── 4. Anki 单词本 ── */}
             <li className={anki.kind === 'ok' ? 'ok' : anki.kind === 'checking' ? 'wait' : 'bad'}>
               <span className="dot" />
               <div className="check-body">
@@ -361,7 +360,6 @@ export default function App() {
             </li>
           </ul>
 
-          {/* ── 待写队列 ── */}
           {pending > 0 && (
             <div className="queue">
               <div className="queue-head">
@@ -390,9 +388,12 @@ export default function App() {
         </>
       ) : (
         <div className="pop-history-wrap">
-          {historyError && <div className="pop-history-feedback err" role="alert">{historyError}
-            <button type="button" className="pop-history-clear-btn" onClick={() => void loadHistory()}>重新加载</button>
-          </div>}
+          {historyError && (
+            <div className="pop-history-feedback err" role="alert">
+              {historyError}
+              <button type="button" className="pop-history-clear-btn" onClick={() => void loadHistory()}>重新加载</button>
+            </div>
+          )}
           {historyLoading && <p role="status">正在加载记录…</p>}
           {historyList.length > 0 ? (
             <>

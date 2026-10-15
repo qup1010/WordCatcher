@@ -1,6 +1,6 @@
 import { browser } from '#imports'
 import type { PartialEntry } from './ai'
-import type { GoogleDictEntry, MtProvider, QuickTranslation } from './machine-translate'
+import type { QuickTranslation } from './machine-translate'
 import type { DictMeta, QuickDictResult } from './open-dict/types'
 import type { FlushResult } from './pending'
 import type { CapturedCard, HistoryItem, WordEntry, LearningRecord, LearningEdits } from './types'
@@ -8,6 +8,13 @@ import type { CapturedCard, HistoryItem, WordEntry, LearningRecord, LearningEdit
 export type QuickLookupResult =
   | { mode: 'dict', dict: QuickDictResult }
   | ({ mode: 'mt' } & QuickTranslation)
+
+export interface LookupContextMeta {
+  sentence?: string
+  sentenceOffset?: number
+  pageTitle?: string
+  pageUrl?: string
+}
 
 /**
  * 内容脚本 ↔ background 的消息协议。
@@ -17,7 +24,7 @@ export type QuickLookupResult =
  * 暴露在页面上下文里。
  */
 export type Request =
-  | { type: 'quick-translate', payload: { text: string, context?: { sentence?: string, pageTitle?: string, pageUrl?: string } } }
+  | { type: 'quick-translate', payload: { text: string, context?: LookupContextMeta } }
   | { type: 'dict-status' }
   | { type: 'dict-clear' }
   | { type: 'dict-lookup', payload: { word: string } }
@@ -33,6 +40,7 @@ export type Request =
   | { type: 'cache-stats' }
   | { type: 'clear-cache' }
   | { type: 'check-anki' }
+  | { type: 'check-desktop-bridge' }
   | { type: 'sync-anki-templates' }
   | { type: 'open-options' }
   | { type: 'library-list' }
@@ -40,6 +48,7 @@ export type Request =
   | { type: 'library-update', payload: { id: string, edits: LearningEdits } }
   | { type: 'library-sync', payload: { id: string } }
   | { type: 'history-list' }
+  | { type: 'history-import', payload: { items: HistoryItem[] } }
   | { type: 'history-remove', payload: { id: string } }
   | { type: 'history-clear' }
   | { type: 'open-sidepanel' }
@@ -60,7 +69,7 @@ export type ResponseMap = {
     structuredError: string | null
   }
   /** Anki 没开时 noteId 为 null、queued 为 true，卡片进了待写队列 */
-  'save-card': { noteId: number | null, queued: boolean, pending?: number, recordId?: string, syncError?: string }
+  'save-card': { noteId: number | null, queued: boolean, pending?: number, recordId?: string, syncError?: string, syncedToDesktop?: boolean }
   'check-duplicate': { exists: boolean }
   'pending-count': { count: number }
   'pending-list': { cards: CapturedCard[] }
@@ -71,6 +80,7 @@ export type ResponseMap = {
   'cache-stats': { size: number }
   'clear-cache': { cleared: number }
   'check-anki': { version: number }
+  'check-desktop-bridge': { alive: boolean }
   'sync-anki-templates': null
   'open-options': null
   'library-list': LearningRecord[]
@@ -78,6 +88,7 @@ export type ResponseMap = {
   'library-update': LearningRecord
   'library-sync': { noteId: number | null, queued: boolean, syncError?: string }
   'history-list': HistoryItem[]
+  'history-import': HistoryItem[]
   'history-remove': HistoryItem[]
   'history-clear': null
   'open-sidepanel': null
@@ -94,12 +105,12 @@ export type Result<T> = { ok: true, data: T } | { ok: false, error: string }
 export const ENTRY_STREAM_PORT = 'wc-entry-stream'
 
 export interface StreamStart {
-  pageUrl?: string
-  pageTitle?: string
-  sentenceOffset?: number
   bypassCache?: boolean
   selection: string
   sentence: string
+  sentenceOffset?: number
+  pageUrl?: string
+  pageTitle?: string
 }
 
 export type StreamEvent =

@@ -124,7 +124,7 @@
 }
 
 .wc-panel {
-  width: 390px;
+  width: 372px;
   position: relative;
   /* max-height 由 place() 按视口剩余空间算好后从行内传进来，这里只是兜底 */
   max-height: 480px;

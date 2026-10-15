@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildClozeSentence, buildNoteFields } from '../../lib/anki'
+import { buildClozeSentence, buildNoteFields, normalizeReading } from '../../lib/anki'
 import { DEFAULT_SETTINGS, type CapturedCard, type Settings } from '../../lib/types'
 
 function card(over: Partial<CapturedCard> = {}): CapturedCard {
@@ -81,6 +81,14 @@ describe('buildNoteFields', () => {
       'Definition', 'MemoryHook', 'PartOfSpeech', 'Reading', 'Sentence',
       'SentencePlain', 'SentenceTranslation', 'Source', 'Word',
     ])
+  })
+
+  it('统一把 Reading 规范化为单层斜杠包裹，与桌面端一致且避免双斜杠', () => {
+    expect(normalizeReading('ˈdevəsteɪt')).toBe('/ˈdevəsteɪt/')
+    expect(normalizeReading('/ˈdevəsteɪt/')).toBe('/ˈdevəsteɪt/')
+    expect(normalizeReading('  ')).toBe('')
+    const fields = buildNoteFields(card({ entry: { ...card().entry, reading: '/ˈdevəsteɪt/' } }), settings())
+    expect(fields.Reading).toBe('/ˈdevəsteɪt/')
   })
 
   it('SentencePlain 始终保留完整原句，即使正面挖了空', () => {

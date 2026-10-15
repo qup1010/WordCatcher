@@ -174,6 +174,3 @@ export async function streamEntry(params: {
     throw new AiError(friendlyMessage(err))
   }
 }
-
-// 一次性返回的 generateEntry 已删除：内容脚本全部走 streamEntry，
-// 留着两条并行的生成路径只会让改提示词时漏改一条。

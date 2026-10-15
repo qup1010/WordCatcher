@@ -20,7 +20,18 @@ function normalizeAi(raw: unknown): Settings['ai'] {
 
   if (Array.isArray(r.profiles)) {
     const profiles = r.profiles
-      .map(p => aiProfileSchema.safeParse({ ...DEFAULT_AI_PROFILE, ...(p as object) }))
+      .map((p) => {
+        const obj = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>
+        return aiProfileSchema.safeParse({
+          ...DEFAULT_AI_PROFILE,
+          ...obj,
+          id: obj.id ?? obj.Id ?? DEFAULT_AI_PROFILE.id,
+          name: obj.name ?? obj.Name ?? DEFAULT_AI_PROFILE.name,
+          baseURL: obj.baseURL ?? obj.BaseUrl ?? DEFAULT_AI_PROFILE.baseURL,
+          apiKey: obj.apiKey ?? obj.ApiKey ?? DEFAULT_AI_PROFILE.apiKey,
+          model: obj.model ?? obj.Model ?? DEFAULT_AI_PROFILE.model,
+        })
+      })
       .filter(p => p.success)
       .map(p => p.data)
     if (profiles.length === 0) return DEFAULT_SETTINGS.ai
@@ -48,22 +59,47 @@ export function normalizeSettings(raw: unknown): Settings {
   if (!raw || typeof raw !== 'object') return DEFAULT_SETTINGS
 
   const r = raw as Record<string, unknown>
-  const section = <K extends 'anki' | 'tts' | 'mt' | 'dict'>(key: K) => ({
+  const section = <K extends 'anki' | 'desktopBridge' | 'tts' | 'mt' | 'dict'>(key: K) => ({
     ...(DEFAULT_SETTINGS[key] as object),
     ...((r[key] as object | undefined) ?? {}),
   })
 
+  // 兼容从 Windows 桌面端导出的 PascalCase 配置字段
+  const desktopAnki = (r.Anki && typeof r.Anki === 'object' ? r.Anki : null) as Record<string, unknown> | null
+  const ankiSection = {
+    ...section('anki'),
+    ...(desktopAnki
+      ? {
+          url: desktopAnki.Url ?? DEFAULT_SETTINGS.anki.url,
+          deckName: desktopAnki.DeckName ?? DEFAULT_SETTINGS.anki.deckName,
+          noteTypeName: desktopAnki.NoteTypeName ?? DEFAULT_SETTINGS.anki.noteTypeName,
+          clozeContext: desktopAnki.ClozeContext ?? DEFAULT_SETTINGS.anki.clozeContext,
+          ttsLang: desktopAnki.TtsLang ?? DEFAULT_SETTINGS.anki.ttsLang,
+        }
+      : {}),
+  }
+
+  const aiSource = r.ai ?? (Array.isArray(r.TranslationProfiles)
+    ? {
+        profiles: r.TranslationProfiles,
+        activeId: r.ActiveTranslationProfileId ?? 'default',
+      }
+    : undefined)
+
   const merged = {
-    ai: normalizeAi(r.ai),
+    ai: normalizeAi(aiSource),
     dict: section('dict'),
-    anki: section('anki'),
+    anki: ankiSection,
+    desktopBridge: section('desktopBridge'),
     tts: section('tts'),
     mt: section('mt'),
-    explainLanguage: r.explainLanguage ?? DEFAULT_SETTINGS.explainLanguage,
+    explainLanguage: r.explainLanguage ?? r.ExplainLanguage ?? DEFAULT_SETTINGS.explainLanguage,
     triggerMode: r.triggerMode ?? DEFAULT_SETTINGS.triggerMode,
-    doubleClickLookup: r.doubleClickLookup ?? DEFAULT_SETTINGS.doubleClickLookup,
-    modifierKey: r.modifierKey ?? DEFAULT_SETTINGS.modifierKey,
-    blacklist: r.blacklist ?? DEFAULT_SETTINGS.blacklist,
+    doubleClickLookup: typeof r.doubleClickLookup === 'boolean' ? r.doubleClickLookup : DEFAULT_SETTINGS.doubleClickLookup,
+    modifierKey: ['none', 'alt', 'ctrl', 'shift', 'meta'].includes(r.modifierKey as string)
+      ? r.modifierKey
+      : DEFAULT_SETTINGS.modifierKey,
+    blacklist: Array.isArray(r.blacklist) ? r.blacklist : DEFAULT_SETTINGS.blacklist,
   }
 
   const parsed = settingsSchema.safeParse(merged)
@@ -84,7 +120,7 @@ export async function saveSettings(next: Settings): Promise<void> {
 }
 
 export function watchSettings(cb: (s: Settings) => void): () => void {
-  return storage.watch<unknown>(SETTINGS_KEY, (raw) => cb(normalizeSettings(raw)))
+  return storage.watch<unknown>(SETTINGS_KEY, raw => cb(normalizeSettings(raw)))
 }
 
 /** 配置是否已经够用了——缺 key 时 UI 要引导用户去配置页 */
