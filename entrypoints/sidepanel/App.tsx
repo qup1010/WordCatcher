@@ -1,4 +1,5 @@
 import { DictionaryView } from '@/lib/components/DictionaryView'
+import { resolveOffset } from '@/lib/anki'
 import type { QuickDictResult } from '@/lib/open-dict/types'
 import {
   AlertCircle,
@@ -18,6 +19,13 @@ import { isTtsSupported, speak } from '@/lib/tts'
 import { navigateTabs } from '@/lib/ui-keyboard'
 import { DEFAULT_SETTINGS, type HistoryItem, type Settings, type WordEntry } from '@/lib/types'
 
+interface SourceContextMeta {
+  selection: string
+  sentenceOffset: number
+  pageUrl: string
+  pageTitle: string
+}
+
 function formatRelativeTime(ts: number): string {
   const diff = Date.now() - ts
   const min = Math.floor(diff / 60000)
@@ -27,6 +35,19 @@ function formatRelativeTime(ts: number): string {
   if (hours < 24) return `${hours} 小时前`
   const days = Math.floor(hours / 24)
   return `${days} 天前`
+}
+
+function highlightSentence(sentence: string, selection: string, offset = -1) {
+  const needle = selection.trim()
+  const at = resolveOffset(sentence, needle, offset)
+  if (at < 0) return sentence
+  return (
+    <>
+      {sentence.slice(0, at)}
+      <mark>{sentence.slice(at, at + needle.length)}</mark>
+      {sentence.slice(at + needle.length)}
+    </>
+  )
 }
 
 export default function App() {
@@ -39,6 +60,7 @@ export default function App() {
   const [historyList, setHistoryList] = useState<HistoryItem[]>([])
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'queued'>('idle')
   const [currentSentence, setCurrentSentence] = useState<string>('')
+  const [sourceMeta, setSourceMeta] = useState<SourceContextMeta | null>(null)
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
@@ -57,42 +79,11 @@ export default function App() {
     }
   }, [])
 
-  useEffect(() => {
-    void getSettings().then(setS)
-    const stopWatch = watchSettings(setS)
-    void refreshHistory()
-
-    // 监听来自扩展内部的消息（例如内容脚本划词广播）
-    const onMessage = (msg: unknown) => {
-      const m = msg as { type?: string, payload?: { word: string, sentence?: string } }
-      if (m?.type === 'sidepanel-sync-word' && m.payload?.word) {
-        setQuery(m.payload.word)
-        setCurrentSentence(m.payload.sentence || '')
-        void doLookup(m.payload.word, m.payload.sentence)
-      }
-    }
-    browser.runtime.onMessage.addListener(onMessage)
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null
-      const isEditing = target?.matches('input, textarea, select, [contenteditable="true"]')
-      if (event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditing) {
-        event.preventDefault()
-        searchInputRef.current?.focus()
-        searchInputRef.current?.select()
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      cancelStream.current?.()
-      stopWatch()
-      browser.runtime.onMessage.removeListener(onMessage)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [refreshHistory])
-
-  const doLookup = async (text: string, sentence?: string) => {
+  const doLookup = useCallback(async (
+    text: string,
+    sentence?: string,
+    meta?: Partial<SourceContextMeta>,
+  ) => {
     const w = text.trim()
     if (!w) return
     const sequence = ++lookupSequence.current
@@ -105,15 +96,28 @@ export default function App() {
     setDictionary(null)
     setTab('current')
     setEntry(null)
-    // 手动查询必须清掉上一次从网页同步来的语境，避免存卡时串句。
     setCurrentSentence(sentence ?? '')
+    setSourceMeta(sentence
+      ? {
+          selection: meta?.selection || w,
+          sentenceOffset: meta?.sentenceOffset ?? -1,
+          pageUrl: meta?.pageUrl || '',
+          pageTitle: meta?.pageTitle || '',
+        }
+      : null)
 
-    // 先走快速翻译与本地词典
     const res = await sendMessage({
       type: 'quick-translate',
       payload: {
         text: w,
-        context: sentence ? { sentence } : undefined,
+        context: sentence
+          ? {
+              sentence,
+              sentenceOffset: meta?.sentenceOffset,
+              pageUrl: meta?.pageUrl,
+              pageTitle: meta?.pageTitle,
+            }
+          : undefined,
       },
     })
 
@@ -149,10 +153,82 @@ export default function App() {
     } else {
       setLookupError(res.error)
     }
-  }
+  }, [refreshHistory])
+
+  useEffect(() => {
+    void getSettings().then(setS)
+    const stopWatch = watchSettings(setS)
+    void refreshHistory()
+
+    const onMessage = (msg: unknown) => {
+      const m = msg as {
+        type?: string
+        payload?: {
+          word?: string
+          selection?: string
+          sentence?: string
+          sentenceOffset?: number
+          pageUrl?: string
+          pageTitle?: string
+          entry?: WordEntry
+          queued?: boolean
+        }
+      }
+      if (m?.type === 'sidepanel-sync-word' && m.payload?.word) {
+        setQuery(m.payload.word)
+        setCurrentSentence(m.payload.sentence || '')
+        void doLookup(m.payload.word, m.payload.sentence, {
+          selection: m.payload.selection || m.payload.word,
+          sentenceOffset: m.payload.sentenceOffset ?? -1,
+          pageUrl: m.payload.pageUrl || '',
+          pageTitle: m.payload.pageTitle || '',
+        })
+      } else if (m?.type === 'sidepanel-sync-entry' && m.payload?.entry) {
+        ++lookupSequence.current
+        cancelStream.current?.()
+        cancelStream.current = null
+        setLoading(false)
+        setLookupError(null)
+        setDictionary(null)
+        setEntry(m.payload.entry)
+        setQuery(m.payload.entry.word || m.payload.selection || '')
+        setCurrentSentence(m.payload.sentence || '')
+        setSourceMeta({
+          selection: m.payload.selection || m.payload.entry.word,
+          sentenceOffset: m.payload.sentenceOffset ?? -1,
+          pageUrl: m.payload.pageUrl || '',
+          pageTitle: m.payload.pageTitle || '',
+        })
+        setTab('current')
+        void refreshHistory()
+      } else if (m?.type === 'sidepanel-sync-saved' && m.payload?.word) {
+        setSaveState(m.payload.queued ? 'queued' : 'saved')
+        void refreshHistory()
+      }
+    }
+    browser.runtime.onMessage.addListener(onMessage)
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const isEditing = target?.matches('input, textarea, select, [contenteditable="true"]')
+      if (event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditing) {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      cancelStream.current?.()
+      stopWatch()
+      browser.runtime.onMessage.removeListener(onMessage)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [refreshHistory, doLookup])
 
   const doAiLookup = () => {
-    const w = (entry?.word || query).trim()
+    const w = (sourceMeta?.selection || entry?.word || query).trim()
     if (!w) return
     const sequence = ++lookupSequence.current
     cancelStream.current?.()
@@ -163,7 +239,13 @@ export default function App() {
     setDictionary(null)
 
     cancelStream.current = openEntryStream(
-      { selection: w, sentence: currentSentence || w },
+      {
+        selection: w,
+        sentence: currentSentence || w,
+        sentenceOffset: sourceMeta?.sentenceOffset ?? -1,
+        pageUrl: sourceMeta?.pageUrl,
+        pageTitle: sourceMeta?.pageTitle,
+      },
       {
         onPartial: (p) => {
           if (sequence !== lookupSequence.current) return
@@ -198,15 +280,19 @@ export default function App() {
     const sequence = lookupSequence.current
     setSaveError(null)
     setSaveState('saving')
+    const selectionText = sourceMeta?.selection || entry.word
+    const sentenceText = currentSentence || entry.word
+    const offset = sourceMeta ? sourceMeta.sentenceOffset : resolveOffset(sentenceText, selectionText, -1)
+
     const res = await sendMessage({
       type: 'save-card',
       payload: {
         entry,
-        selection: entry.word,
-        sentence: currentSentence || entry.word,
-        sentenceOffset: 0,
-        pageUrl: 'sidepanel',
-        pageTitle: 'SidePanel Lookup',
+        selection: selectionText,
+        sentence: sentenceText,
+        sentenceOffset: offset,
+        pageUrl: sourceMeta?.pageUrl || '',
+        pageTitle: sourceMeta?.pageTitle || 'SidePanel Lookup',
         createdAt: Date.now(),
       },
     })
@@ -239,11 +325,18 @@ export default function App() {
     setEntry({
       word: item.word,
       reading: item.reading || '',
-      partOfSpeech: '',
+      partOfSpeech: item.partOfSpeech || '',
       definition: item.definition,
-      contextTranslation: '',
+      contextTranslation: item.contextTranslation || '',
+      memoryHook: item.memoryHook,
     })
     setCurrentSentence(item.sentence || '')
+    setSourceMeta({
+      selection: item.selection || item.word,
+      sentenceOffset: item.sentenceOffset ?? -1,
+      pageUrl: item.pageUrl || '',
+      pageTitle: item.pageTitle || '',
+    })
     setQuery(item.word)
     setSaveState(item.savedToAnki ? 'saved' : 'idle')
     setLookupError(null)
@@ -272,6 +365,8 @@ export default function App() {
       setHistoryError(res.error)
     }
   }
+
+  const cleanReading = entry?.reading?.replace(/^\/+|\/+$/g, '')
 
   return (
     <div className="sp-shell">
@@ -309,16 +404,31 @@ export default function App() {
               placeholder="输入单词、短语或句子"
               autoComplete="off"
               spellCheck={false}
-              onKeyDown={event => {
+              onKeyDown={(event) => {
                 if (event.nativeEvent.isComposing && event.key === 'Enter') event.preventDefault()
-                if (event.key === 'Escape') { event.preventDefault(); setQuery('') }
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setQuery('')
+                }
               }}
               value={query}
               onChange={e => setQuery(e.target.value)}
               aria-keyshortcuts="/"
             />
-            {query && <button type="button" className="sp-search-clear sp-btn-icon" aria-label="清空查询" title="清空查询（Esc）"
-              onClick={() => { setQuery(''); searchInputRef.current?.focus() }}>×</button>}
+            {query && (
+              <button
+                type="button"
+                className="sp-search-clear sp-btn-icon"
+                aria-label="清空查询"
+                title="清空查询（Esc）"
+                onClick={() => {
+                  setQuery('')
+                  searchInputRef.current?.focus()
+                }}
+              >
+                ×
+              </button>
+            )}
             {!query && <kbd className="sp-search-shortcut" aria-hidden>/</kbd>}
           </div>
           <button type="submit" className="sp-search-btn" disabled={loading || !query.trim()}>
@@ -361,7 +471,7 @@ export default function App() {
               <div className="sp-card-head">
                 <div className="sp-card-word-wrap">
                   <span className="sp-card-word">{entry.word}</span>
-                  {entry.reading && <span className="sp-card-reading">/{entry.reading}/</span>}
+                  {cleanReading && <span className="sp-card-reading">/{cleanReading}/</span>}
                   {isTtsSupported() && (
                     <button
                       type="button"
@@ -381,7 +491,13 @@ export default function App() {
 
               {currentSentence && (
                 <div className="sp-sentence-box">
-                  <div>{currentSentence}</div>
+                  <div>
+                    {highlightSentence(
+                      currentSentence,
+                      sourceMeta?.selection || entry.word,
+                      sourceMeta?.sentenceOffset ?? -1,
+                    )}
+                  </div>
                   {entry.contextTranslation && (
                     <div className="sp-sentence-trans">{entry.contextTranslation}</div>
                   )}
@@ -390,7 +506,7 @@ export default function App() {
 
               {entry.memoryHook && (
                 <div className="sp-hook">
-                  <strong>记忆线索</strong>
+                  <strong>💡 记忆线索</strong>
                   <div>{entry.memoryHook}</div>
                 </div>
               )}
@@ -457,7 +573,7 @@ export default function App() {
               <strong>这次没有查到结果</strong>
               <span>{lookupError}</span>
               <div className="sp-state-actions">
-                <button type="button" className="sp-btn-save" onClick={() => void doLookup(query, currentSentence || undefined)}>重试</button>
+                <button type="button" className="sp-btn-save" onClick={() => void doLookup(query, currentSentence || undefined, sourceMeta || undefined)}>重试</button>
                 <button type="button" className="sp-btn-subtle" onClick={() => void browser.runtime.openOptionsPage()}>检查设置</button>
               </div>
             </div>
@@ -470,9 +586,13 @@ export default function App() {
           )
         ) : (
           <div className="sp-history-wrap">
-            {historyError && <div className="sp-inline-error sp-history-error" role="alert"><AlertCircle size={14} />
-              <span>{historyError}</span><button type="button" className="sp-btn-text" onClick={() => void refreshHistory()}>重试</button>
-            </div>}
+            {historyError && (
+              <div className="sp-inline-error sp-history-error" role="alert">
+                <AlertCircle size={14} />
+                <span>{historyError}</span>
+                <button type="button" className="sp-btn-text" onClick={() => void refreshHistory()}>重试</button>
+              </div>
+            )}
             {historyList.length > 0 ? (
               <>
                 <div className="sp-history-toolbar">

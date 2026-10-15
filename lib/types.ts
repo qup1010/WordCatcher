@@ -63,13 +63,18 @@ export const DEFAULT_AI_PROFILE: AiProfile = {
   model: 'gpt-4o-mini',
 }
 
-/** 查词历史条目 */
+/** 查词历史条目（保留完整词条与语境元数据，确保从侧边栏或历史补存时不丢字段） */
 export interface HistoryItem {
   id: string
   word: string
+  selection?: string
   reading?: string
+  partOfSpeech?: string
   definition: string
   sentence?: string
+  sentenceOffset?: number
+  contextTranslation?: string
+  memoryHook?: string
   pageTitle?: string
   pageUrl?: string
   timestamp: number
@@ -102,6 +107,14 @@ export const settingsSchema = z.object({
     /** 是否在卡片正面把原句里的目标词挖空 */
     clozeContext: z.boolean().default(true),
   }),
+  /** 与 Windows 桌面版本地桥接联动配置 */
+  desktopBridge: z.object({
+    enabled: z.boolean().default(true),
+    url: z.string().default('http://127.0.0.1:18765'),
+  }).default({
+    enabled: true,
+    url: 'http://127.0.0.1:18765',
+  }),
   tts: z.object({
     enabled: z.boolean().default(true),
     /** 插件内试听用的语音语言 */
@@ -130,6 +143,7 @@ export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({
   ai: {},
   dict: {},
   anki: {},
+  desktopBridge: {},
   tts: {},
   mt: {},
 })

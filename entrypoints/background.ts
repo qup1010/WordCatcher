@@ -8,6 +8,7 @@ import {
   findExisting,
   updateModelTemplates,
 } from '@/lib/anki'
+import { checkDesktopBridge, syncCardToDesktop } from '@/lib/desktop-bridge'
 import { cacheKey, cacheSize, clearCache, getCached, setCached } from '@/lib/entry-cache'
 import { MtError, quickTranslate } from '@/lib/machine-translate'
 import {
@@ -30,6 +31,7 @@ import {
 import {
   addHistory,
   clearHistory,
+  importHistoryItems,
   markHistorySaved,
   readHistory,
   removeHistory,
@@ -96,9 +98,13 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
             if (dictRes) {
               void addHistory({
                 word: dictRes.headword,
+                selection: text,
                 reading: dictRes.reading,
+                partOfSpeech: dictRes.primaryPos,
                 definition: dictRes.coreMeanings.join('； '),
+                memoryHook: dictRes.memoryHook,
                 sentence: ctx?.sentence,
+                sentenceOffset: ctx?.sentenceOffset,
                 pageTitle: ctx?.pageTitle,
                 pageUrl: ctx?.pageUrl,
                 source: 'dict',
@@ -117,10 +123,18 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
         explainLanguage: settings.explainLanguage,
       })
 
+      const mtPos = result.dictionary?.[0]?.pos || ''
+      const mtDef = result.dictionary && result.dictionary.length > 0
+        ? result.dictionary.map(d => (d.pos ? `${d.pos} ${d.meanings.join('；')}` : d.meanings.join('；'))).join(' / ')
+        : result.translation
+
       void addHistory({
         word: text,
-        definition: result.translation,
+        selection: text,
+        partOfSpeech: mtPos,
+        definition: mtDef,
         sentence: ctx?.sentence,
+        sentenceOffset: ctx?.sentenceOffset,
         pageTitle: ctx?.pageTitle,
         pageUrl: ctx?.pageUrl,
         source: 'mt',
@@ -130,32 +144,37 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     }
 
     case 'save-card': {
-      try {
-        // 快速存卡如果缺少句子翻译且有原句，顺带异步机翻补全
-        if (!req.payload.entry.contextTranslation && req.payload.sentence) {
-          try {
-            const mt = await quickTranslate(req.payload.sentence, {
-              provider: settings.mt.provider,
-              explainLanguage: settings.explainLanguage,
-            })
-            if (mt.translation) {
-              req.payload.entry.contextTranslation = mt.translation
-            }
-          } catch {
-            // 忽略机翻错误
+      // 快速存卡如果缺少句子翻译且有原句，顺带异步机翻补全
+      if (!req.payload.entry.contextTranslation && req.payload.sentence && req.payload.sentence !== req.payload.selection) {
+        try {
+          const mt = await quickTranslate(req.payload.sentence, {
+            provider: settings.mt.provider,
+            explainLanguage: settings.explainLanguage,
+          })
+          if (mt.translation) {
+            req.payload.entry.contextTranslation = mt.translation
           }
+        } catch {
+          // 忽略机翻错误
         }
+      }
 
+      // 异步同步至 Windows 桌面版本地词库（桌面版在线时自动入库）
+      const desktopPromise = syncCardToDesktop(req.payload, settings).catch(() => false)
+
+      try {
         const noteId = await addNote(req.payload, settings)
+        const syncedToDesktop = await desktopPromise
         void markHistorySaved(req.payload.entry.word)
-        return { ok: true, data: { noteId, queued: false } }
+        return { ok: true, data: { noteId, queued: false, syncedToDesktop } }
       } catch (err) {
         // Anki 没开就先排队，让用户能接着读下去；其它错误（重复词等）照常报出去
         if (!(err instanceof AnkiError && err.kind === 'unreachable')) throw err
 
         const queued = await enqueue(req.payload)
+        const syncedToDesktop = await desktopPromise
         void markHistorySaved(req.payload.entry.word)
-        return { ok: true, data: { noteId: null, queued: true, pending: queued } }
+        return { ok: true, data: { noteId: null, queued: true, pending: queued, syncedToDesktop } }
       }
     }
 
@@ -209,6 +228,11 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
       return { ok: true, data: { version } }
     }
 
+    case 'check-desktop-bridge': {
+      const alive = await checkDesktopBridge(settings.desktopBridge.url)
+      return { ok: true, data: { alive } }
+    }
+
     case 'sync-anki-templates': {
       await updateModelTemplates(settings)
       return { ok: true, data: null }
@@ -222,6 +246,11 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     case 'history-list': {
       const list = await readHistory()
       return { ok: true, data: list }
+    }
+
+    case 'history-import': {
+      const next = await importHistoryItems(req.payload.items)
+      return { ok: true, data: next }
     }
 
     case 'history-remove': {
@@ -319,9 +348,16 @@ function handleEntryStream(port: Browser.runtime.Port): void {
         if (cached) {
           void addHistory({
             word: cached.word || req.selection,
+            selection: req.selection,
             reading: cached.reading,
+            partOfSpeech: cached.partOfSpeech,
             definition: cached.definition,
+            contextTranslation: cached.contextTranslation,
+            memoryHook: cached.memoryHook,
             sentence: req.sentence,
+            sentenceOffset: req.sentenceOffset,
+            pageUrl: req.pageUrl,
+            pageTitle: req.pageTitle,
             source: 'ai',
           })
           // 命中缓存就没什么可流的了，直接给最终结果
@@ -337,8 +373,8 @@ function handleEntryStream(port: Browser.runtime.Port): void {
           },
         })
 
-        // 尝试从本地词库补充记忆主线 (Memory Hook)
-        if (!entry.memoryHook && settings.dict.enabled) {
+        // 优先使用本地词库中人工精校的记忆线索，若无则保留 AI 生成的 memoryHook
+        if (settings.dict.enabled) {
           try {
             const dictRes = await lookupWord(entry.word || req.selection)
             if (dictRes?.memoryHook) {
@@ -352,9 +388,16 @@ function handleEntryStream(port: Browser.runtime.Port): void {
         setCached(key, entry)
         void addHistory({
           word: entry.word || req.selection,
+          selection: req.selection,
           reading: entry.reading,
+          partOfSpeech: entry.partOfSpeech,
           definition: entry.definition,
+          contextTranslation: entry.contextTranslation,
+          memoryHook: entry.memoryHook,
           sentence: req.sentence,
+          sentenceOffset: req.sentenceOffset,
+          pageUrl: req.pageUrl,
+          pageTitle: req.pageTitle,
           source: 'ai',
         })
 

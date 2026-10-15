@@ -17,16 +17,22 @@ export async function addHistory(
 
   // 找到是否已经有相同词形的记录
   const existingIdx = list.findIndex(h => h.word.trim().toLowerCase() === wordKey)
-  const isPreviouslySaved = existingIdx >= 0 ? Boolean(list[existingIdx].savedToAnki) : false
+  const existing = existingIdx >= 0 ? list[existingIdx] : undefined
+  const isPreviouslySaved = existing ? Boolean(existing.savedToAnki) : false
 
   const newItem: HistoryItem = {
     id: item.id || crypto.randomUUID(),
     word: item.word.trim(),
-    reading: item.reading,
+    selection: item.selection ?? existing?.selection ?? item.word.trim(),
+    reading: item.reading || existing?.reading,
+    partOfSpeech: item.partOfSpeech || existing?.partOfSpeech,
     definition: item.definition,
-    sentence: item.sentence,
-    pageTitle: item.pageTitle,
-    pageUrl: item.pageUrl,
+    sentence: item.sentence ?? existing?.sentence,
+    sentenceOffset: item.sentenceOffset ?? existing?.sentenceOffset,
+    contextTranslation: item.contextTranslation || existing?.contextTranslation,
+    memoryHook: item.memoryHook || existing?.memoryHook,
+    pageTitle: item.pageTitle ?? existing?.pageTitle,
+    pageUrl: item.pageUrl ?? existing?.pageUrl,
     timestamp: item.timestamp ?? Date.now(),
     savedToAnki: item.savedToAnki ?? isPreviouslySaved,
     source: item.source,
@@ -36,6 +42,35 @@ export async function addHistory(
   const filtered = list.filter((_, idx) => idx !== existingIdx)
   const next = [newItem, ...filtered].slice(0, MAX_HISTORY)
 
+  await storage.setItem(HISTORY_KEY, next)
+  return next
+}
+
+export async function importHistoryItems(items: HistoryItem[]): Promise<HistoryItem[]> {
+  if (!Array.isArray(items) || items.length === 0) return readHistory()
+  const current = await readHistory()
+  const mergedMap = new Map<string, HistoryItem>()
+
+  for (const item of [...items, ...current]) {
+    if (!item || typeof item.word !== 'string' || !item.word.trim()) continue
+    const key = item.word.trim().toLowerCase()
+    const prev = mergedMap.get(key)
+    if (!prev || (item.timestamp ?? 0) >= (prev.timestamp ?? 0)) {
+      mergedMap.set(key, {
+        ...prev,
+        ...item,
+        id: item.id || prev?.id || crypto.randomUUID(),
+        word: item.word.trim(),
+        timestamp: item.timestamp || prev?.timestamp || Date.now(),
+        savedToAnki: Boolean(item.savedToAnki || prev?.savedToAnki),
+        source: item.source || prev?.source || 'dict',
+      })
+    }
+  }
+
+  const next = [...mergedMap.values()]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, MAX_HISTORY)
   await storage.setItem(HISTORY_KEY, next)
   return next
 }

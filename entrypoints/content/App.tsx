@@ -1,5 +1,5 @@
 import { DictionaryView } from '@/lib/components/DictionaryView'
-import { Check, Copy, Lightbulb, PanelRight, Pencil, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
+import { Check, Copy, Lightbulb, PanelRight, Pin, Sparkles, Volume2, X, Zap } from 'lucide-react'
 import { browser } from '#imports'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PartialEntry } from '@/lib/ai'
@@ -20,8 +20,6 @@ const QUICK_WIDTH = 356
 const QUICK_LONG_WIDTH = 440
 const PILL_WIDTH = 152
 const PILL_HEIGHT = 34
-
-/** 解析释义中的词性前缀（如 "n. 重置" 或 "adj. 准确的"） */
 
 /** 复制按钮组件 */
 function CopyBtn({ text, title = '复制词条' }: { text: string, title?: string }) {
@@ -160,9 +158,9 @@ function EntryBody({
   onOpenSidePanel,
   onEditDefinition,
 }: EntryBodyProps) {
-  // word 是第一个到的字段，但在它到之前先用划选原文占位，避免面板从一片空白开始
   const word = entry.word || ctx.selection
-  const copyText = `${word}${entry.reading ? ` /${entry.reading}/` : ''}: ${entry.definition || ''}`
+  const cleanReading = entry.reading?.replace(/^\/+|\/+$/g, '')
+  const copyText = `${word}${cleanReading ? ` /${cleanReading}/` : ''}: ${entry.definition || ''}`
   const [editing, setEditing] = useState(false)
   const [defDraft, setDefDraft] = useState(entry.definition || '')
 
@@ -195,7 +193,7 @@ function EntryBody({
       >
         <div className="wc-head-main" onPointerDown={onStartDrag}>
           <span className="wc-word">{word}</span>
-          {entry.reading && <span className="wc-reading">/{entry.reading}/</span>}
+          {cleanReading && <span className="wc-reading">/{cleanReading}/</span>}
           {ttsReady && !streaming && (
             <button
               type="button"
@@ -291,15 +289,16 @@ function EntryBody({
           role={!streaming ? 'button' : undefined}
           tabIndex={!streaming ? 0 : undefined}
           aria-label={!streaming ? '编辑释义' : undefined}
-          onKeyDown={event => {
+          onKeyDown={(event) => {
             if (!streaming && !event.nativeEvent.isComposing && (event.key === 'Enter' || event.key === ' ')) {
-              event.preventDefault(); event.stopPropagation(); setEditing(true)
+              event.preventDefault()
+              event.stopPropagation()
+              setEditing(true)
             }
           }}
           onClick={() => !streaming && setEditing(true)}
         >
           {entry.definition}
-          {/* contextTranslation 排在 definition 后面，它一开始出现就说明释义已经写完了 */}
           {streaming && !entry.contextTranslation && <span className="wc-caret" aria-hidden />}
         </div>
       )}
@@ -341,30 +340,20 @@ type Phase =
     translation: string
     provider: MtProvider
     fellBack: boolean
-    /** 谷歌词典：词性 + 多义项；微软路径没有 */
     dictionary?: GoogleDictEntry[]
   }
   | { kind: 'quick-error', message: string }
   | { kind: 'loading' }
-  /** 流式生成中：字段陆续到齐，先渲染已有的部分 */
   | { kind: 'streaming', partial: PartialEntry }
   | { kind: 'result', entry: WordEntry }
   | { kind: 'error', message: string }
 
-/**
- * 这个词是不是已经在牌组里了。
- *
- * unknown 涵盖「还没查」和「查不到（Anki 没开）」两种情况——两者对界面的
- * 要求是一样的：什么都别说，按正常流程让用户点保存。查重是锦上添花，
- * 它自己失败了不该冒出一条用户无法处理的报错。
- */
 type Dupe = 'unknown' | 'yes' | 'no'
 
 type SaveState =
   | { kind: 'idle' }
   | { kind: 'saving' }
   | { kind: 'saved' }
-  /** Anki 没开，卡片进了待写队列，等它起来再补写 */
   | { kind: 'queued', pending: number }
   | { kind: 'failed', message: string }
 
@@ -385,7 +374,6 @@ function isEditable(node: Node | null): boolean {
   return false
 }
 
-/** 把当前视口尺寸补进纯函数版的 place */
 function placeAt(rect: DOMRect, width: number, height: number) {
   return place(rect, { width, height }, {
     width: window.innerWidth,
@@ -393,7 +381,6 @@ function placeAt(rect: DOMRect, width: number, height: number) {
   })
 }
 
-/** 标出原句里的目标词，用抽取时记下的精确偏移而不是重新查找 */
 function highlight(ctx: SelectionContext) {
   const needle = ctx.selection.trim()
   const at = resolveOffset(ctx.sentence, needle, ctx.offset)
@@ -423,7 +410,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const [expandHook, setExpandHook] = useState(false)
   const [size, setSize] = useState({ width: PANEL_WIDTH, height: 0 })
-  /** 当前流式请求的取消函数，换词或关闭面板时要调一下 */
   const streamRef = useRef<(() => void) | null>(null)
 
   const clampPos = useCallback((left: number, top: number, width: number) => {
@@ -444,7 +430,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
   const dismiss = useCallback(() => {
     stopSpeaking()
-    // 关掉面板就没人看结果了，别让流继续跑
     streamRef.current?.()
     streamRef.current = null
     setPhase({ kind: 'hidden' })
@@ -526,28 +511,42 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     }
   }, [fixedPos, dragOffset, clampPos])
 
-  /**
-   * 开一次 AI 释义。
-   *
-   * 走流式：释义会逐字出现，首字通常 1 秒内就到。上一条还没结束就再划词的话，
-   * 先把旧的取消掉，否则两条流会交替往同一个面板里写。
-   */
   const lookup = useCallback((ctx: SelectionContext) => {
     streamRef.current?.()
     setOverrideDef(null)
     setPhase({ kind: 'loading' })
 
-    streamRef.current = openEntryStream(ctx, {
-      onPartial: partial => setPhase({ kind: 'streaming', partial }),
-      onDone: (entry) => {
-        streamRef.current = null
-        setPhase({ kind: 'result', entry })
+    streamRef.current = openEntryStream(
+      {
+        selection: ctx.selection,
+        sentence: ctx.sentence,
+        sentenceOffset: ctx.offset,
+        pageUrl: location.href,
+        pageTitle: document.title,
       },
-      onError: (message) => {
-        streamRef.current = null
-        setPhase({ kind: 'error', message })
+      {
+        onPartial: partial => setPhase({ kind: 'streaming', partial }),
+        onDone: (entry) => {
+          streamRef.current = null
+          setPhase({ kind: 'result', entry })
+          browser.runtime.sendMessage({
+            type: 'sidepanel-sync-entry',
+            payload: {
+              entry,
+              selection: ctx.selection,
+              sentence: ctx.sentence,
+              sentenceOffset: ctx.offset,
+              pageUrl: location.href,
+              pageTitle: document.title,
+            },
+          }).catch(() => {})
+        },
+        onError: (message) => {
+          streamRef.current = null
+          setPhase({ kind: 'error', message })
+        },
       },
-    })
+    )
   }, [])
 
   const quickLookup = useCallback(async (ctx: SelectionContext) => {
@@ -560,6 +559,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         text: ctx.selection,
         context: {
           sentence: ctx.sentence,
+          sentenceOffset: ctx.offset,
           pageTitle: document.title,
           pageUrl: location.href,
         },
@@ -595,7 +595,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
   const ttsReady = settings.tts.enabled && isTtsSupported()
 
-  // 面板高度是内容撑出来的，量到之后才能决定往上翻还是往下放
   useEffect(() => {
     if (!panelRef.current) return
     const el = panelRef.current
@@ -628,14 +627,21 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       return
     }
 
+    browser.runtime.sendMessage({
+      type: 'sidepanel-sync-saved',
+      payload: { word: entry.word, queued: Boolean(res.data.queued) },
+    }).catch(() => {})
+
     if (res.data.queued) {
       setSave({ kind: 'queued', pending: res.data.pending ?? 1 })
       return
     }
 
     setSave({ kind: 'saved' })
-    setTimeout(dismiss, 1200)
-  }, [anchor, dismiss])
+    if (!pinned) {
+      setTimeout(dismiss, 1200)
+    }
+  }, [anchor, dismiss, pinned])
 
   const onSave = useCallback(async () => {
     if (phase.kind !== 'result') return
@@ -645,7 +651,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     await saveCard(entryToSave)
   }, [phase, saveCard, overrideDef])
 
-  /** 快译结果直接存卡：有离线词典用离线词典，否则用机器翻译 */
   const onSaveQuick = useCallback(async () => {
     if (phase.kind !== 'quick' || !anchor) return
 
@@ -678,7 +683,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     })
   }, [phase, anchor, saveCard])
 
-  // 出结果就顺手查一次重，让「保存」在用户读完释义之前就变成「已保存」
   const dupeWord = phase.kind === 'result'
     ? phase.entry.word
     : phase.kind === 'quick' && anchor
@@ -699,9 +703,13 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     }
   }, [dupeWord])
 
+  const hasNewSentenceContext = Boolean(
+    anchor?.ctx.sentence
+    && anchor.ctx.sentence.trim() !== anchor.ctx.selection.trim(),
+  )
   const saved = save.kind === 'saved'
   const queued = save.kind === 'queued'
-  const saveDisabled = save.kind === 'saving' || saved || queued || dupe === 'yes'
+  const saveDisabled = save.kind === 'saving' || saved || queued || (dupe === 'yes' && !hasNewSentenceContext)
   const saveLabel = save.kind === 'saving'
     ? '保存中…'
     : saved
@@ -709,10 +717,9 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       : queued
         ? '已暂存'
         : dupe === 'yes'
-          ? '已保存'
+          ? (hasNewSentenceContext ? '保存新语境' : '已保存')
           : '保存'
 
-  // ── 选区监听 ──────────────────────────────────
   useEffect(() => {
     const insideUi = (target: EventTarget | null) =>
       target instanceof Node && shadowHost.contains(target)
@@ -720,13 +727,11 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     const onMouseUp = (e: MouseEvent) => {
       if (insideUi(e.target)) return
 
-      // 1. 域名黑名单过滤
       const host = location.hostname.toLowerCase()
       if (settings.blacklist?.some(item => item && host.includes(item.toLowerCase()))) {
         return
       }
 
-      // 2. 修饰按键检查
       if (settings.modifierKey === 'alt' && !e.altKey) return
       if (settings.modifierKey === 'ctrl' && !e.ctrlKey) return
       if (settings.modifierKey === 'shift' && !e.shiftKey) return
@@ -734,7 +739,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
       const isDoubleClick = e.detail === 2
 
-      // 交给浏览器先把选区结算完，否则拿到的还是上一次的
       setTimeout(() => {
         const sel = window.getSelection()
         if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
@@ -747,19 +751,24 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         const rect = range.getBoundingClientRect()
         setAnchor({ ctx, range: range.cloneRange(), rect })
         setSave({ kind: 'idle' })
-            setExpandHook(false)
+        setExpandHook(false)
 
-        // 联动广播给侧边栏（如果已开）
         browser.runtime.sendMessage({
           type: 'sidepanel-sync-word',
-          payload: { word: ctx.selection, sentence: ctx.sentence },
+          payload: {
+            word: ctx.selection,
+            selection: ctx.selection,
+            sentence: ctx.sentence,
+            sentenceOffset: ctx.offset,
+            pageUrl: location.href,
+            pageTitle: document.title,
+          },
         }).catch(() => {})
 
         if (!pinned) {
           setDragOffset({ x: 0, y: 0 })
         }
 
-        // 双击单词时：若开启了双击查词，跳过操作胶囊直接展开快速翻译
         if (settings.doubleClickLookup && isDoubleClick) {
           void quickLookup(ctx)
           return
@@ -770,7 +779,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         } else if (settings.triggerMode === 'quick') {
           void quickLookup(ctx)
         } else {
-          // 如果已被 Pin 住，直接更新内容，不退回操作胶囊
           if (pinned) {
             void quickLookup(ctx)
           } else {
@@ -838,7 +846,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     speakText,
   ])
 
-  // 页面滚动时重新贴合选区（如果已被 Pin 固定则保持视口绝对位置不动）
   useEffect(() => {
     if (phase.kind === 'hidden' || !anchor || (pinned && fixedPos)) return
 
@@ -855,7 +862,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
   if (phase.kind === 'hidden' || !anchor) return null
 
-  // ── 触发胶囊：⚡ 快译 | ✨ AI 词条 ────────────────
   if (phase.kind === 'trigger') {
     const pos = placeAt(anchor.rect, PILL_WIDTH, PILL_HEIGHT)
     return (
@@ -875,7 +881,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     )
   }
 
-  // ── 快译迷你面板 ──────────────────────────────
   if (phase.kind === 'quick-loading' || phase.kind === 'quick' || phase.kind === 'quick-error') {
     const rawSelection = anchor.ctx.selection.trim()
     const isLongText = rawSelection.length > 35 || rawSelection.includes('\n') || rawSelection.split(/\s+/).length > 5
@@ -883,6 +888,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     const pos = placeAt(anchor.rect, panelWidth, size.height || 90)
     const isDict = phase.kind === 'quick' && phase.mode === 'dict'
     const wordToSpeak = isDict ? phase.dict.headword : anchor.ctx.selection
+    const cleanDictReading = isDict ? phase.dict.reading?.replace(/^\/+|\/+$/g, '') : ''
 
     const rawLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
     const rawTop = fixedPos ? fixedPos.top : (pos.top + dragOffset.y)
@@ -944,9 +950,9 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                     </button>
                   )}
                 </span>
-                {!isLongText && isDict && phase.dict.reading && (
+                {!isLongText && isDict && cleanDictReading && (
                   <span className="wc-reading">
-                    /{phase.dict.reading}/
+                    /{cleanDictReading}/
                   </span>
                 )}
               </div>
@@ -999,7 +1005,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   <CopyBtn
                     text={
                       isDict
-                        ? `${phase.dict.headword}${phase.dict.reading ? ` /${phase.dict.reading}/` : ''}: ${phase.dict.coreMeanings.join('； ')}`
+                        ? `${phase.dict.headword}${cleanDictReading ? ` /${cleanDictReading}/` : ''}: ${phase.dict.coreMeanings.join('； ')}`
                         : `${anchor.ctx.selection}: ${phase.mode === 'mt' ? phase.translation : ''}`
                     }
                   />
@@ -1026,7 +1032,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               </div>
             )}
 
-            {/* ── 离线词典视图 ── */}
             {phase.kind === 'quick' && phase.mode === 'dict' && (
               <div className="wc-quick-body">
                 <DictionaryView key={phase.dict.headword} result={phase.dict} />
@@ -1057,12 +1062,9 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                     </div>
                   </div>
                 )}
-
-
               </div>
             )}
 
-            {/* ── 在线机翻视图 ── */}
             {phase.kind === 'quick' && phase.mode === 'mt' && (
               <div className="wc-quick-body">
                 <div className={`wc-def ${isLongText ? 'wc-def-long' : ''}`}>
@@ -1102,7 +1104,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   type="button"
                   className="wc-btn wc-btn-primary"
                   disabled={saveDisabled}
-                  title={dupe === 'yes' ? '这个词已经在牌组里了' : '快捷键: Enter'}
+                  title={dupe === 'yes' && !hasNewSentenceContext ? '这个词已经在牌组里了' : '快捷键: Enter'}
                   onClick={() => void onSaveQuick()}
                 >
                   <span>{saveLabel}</span>
@@ -1131,7 +1133,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     )
   }
 
-  // ── AI 词条面板 ──────────────────────────────
   const panelW = size.width || PANEL_WIDTH
   const pos = placeAt(anchor.rect, panelW, size.height)
   const rawLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
@@ -1146,8 +1147,6 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       style={{
         left: finalLeft,
         top: finalTop,
-        // 高度是内容撑出来的，量到之前无法判断该往上翻还是往下放。
-        // 先藏起来量一帧，否则用户会看见面板从下方跳到上方。
         visibility: size.height === 0 ? 'hidden' : undefined,
       }}
     >
@@ -1159,125 +1158,127 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         aria-label={`「${anchor.ctx.selection}」的词条`}
       >
         <div className="wc-fade" key={phase.kind} aria-live="polite">
-        {sidePanelHint && (
-          <div className="wc-toast-hint" role="status">
-            受浏览器限制，请点击浏览器右上角扩展栏插件图标打开侧边栏
-          </div>
-        )}
-        {phase.kind === 'loading' && (
-          <>
-            <Skeleton
-              onStartDrag={onStartDrag}
-              pinned={pinned}
-              onTogglePin={togglePin}
-              onClose={dismiss}
-              onOpenSidePanel={openSidePanel}
-            />
-            <div className="wc-state wc-state-quiet">
-              <Dots />
-              <span>正在结合上下文解释「{anchor.ctx.selection}」</span>
+          {sidePanelHint && (
+            <div className="wc-toast-hint" role="status">
+              受浏览器限制，请点击浏览器右上角扩展栏插件图标打开侧边栏
             </div>
-          </>
-        )}
+          )}
+          {phase.kind === 'loading' && (
+            <>
+              <Skeleton
+                onStartDrag={onStartDrag}
+                pinned={pinned}
+                onTogglePin={togglePin}
+                onClose={dismiss}
+                onOpenSidePanel={openSidePanel}
+              />
+              <div className="wc-state wc-state-quiet">
+                <Dots />
+                <span>正在结合上下文解释「{anchor.ctx.selection}」</span>
+              </div>
+            </>
+          )}
 
-        {phase.kind === 'error' && (
-          <>
-            <div className="wc-error" role="alert">{phase.message}</div>
-            <div className="wc-actions">
-              <button type="button" className="wc-btn wc-btn-primary" onClick={() => lookup(anchor.ctx)}>
-                重试
-              </button>
-              <button
-                type="button"
-                className="wc-btn wc-btn-ghost"
-                onClick={() => void sendMessage({ type: 'open-options' })}
-              >
-                打开设置
-              </button>
-              <div className="wc-spacer" />
-              <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
-            </div>
-          </>
-        )}
+          {phase.kind === 'error' && (
+            <>
+              <div className="wc-error" role="alert">{phase.message}</div>
+              <div className="wc-actions">
+                <button type="button" className="wc-btn wc-btn-primary" onClick={() => lookup(anchor.ctx)}>
+                  重试
+                </button>
+                <button
+                  type="button"
+                  className="wc-btn wc-btn-ghost"
+                  onClick={() => void sendMessage({ type: 'open-options' })}
+                >
+                  打开设置
+                </button>
+                <div className="wc-spacer" />
+                <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
+              </div>
+            </>
+          )}
 
-        {phase.kind === 'streaming' && (
-          <EntryBody
-            entry={phase.partial}
-            ctx={anchor.ctx}
-            ttsReady={ttsReady}
-            onSpeak={speakText}
-            streaming
-            pinned={pinned}
-            onTogglePin={togglePin}
-            onStartDrag={onStartDrag}
-            onClose={dismiss}
-            onOpenSidePanel={openSidePanel}
-          />
-        )}
-
-        {phase.kind === 'result' && (
-          <>
+          {phase.kind === 'streaming' && (
             <EntryBody
-              entry={overrideDef ? { ...phase.entry, definition: overrideDef } : phase.entry}
+              entry={phase.partial}
               ctx={anchor.ctx}
               ttsReady={ttsReady}
               onSpeak={speakText}
+              streaming
               pinned={pinned}
               onTogglePin={togglePin}
               onStartDrag={onStartDrag}
               onClose={dismiss}
               onOpenSidePanel={openSidePanel}
-              onEditDefinition={setOverrideDef}
             />
+          )}
 
-            <div className="wc-actions">
-              <button
-                type="button"
-                className="wc-btn wc-btn-primary"
-                onClick={() => void onSave()}
-                disabled={saveDisabled}
-                title={dupe === 'yes' ? '这个词已经在牌组里了' : '快捷键: Enter'}
-              >
-                <span>{saveLabel}</span>
-                {!saveDisabled && <span className="wc-kbd">↵ Enter</span>}
-              </button>
+          {phase.kind === 'result' && (
+            <>
+              <EntryBody
+                entry={overrideDef ? { ...phase.entry, definition: overrideDef } : phase.entry}
+                ctx={anchor.ctx}
+                ttsReady={ttsReady}
+                onSpeak={speakText}
+                pinned={pinned}
+                onTogglePin={togglePin}
+                onStartDrag={onStartDrag}
+                onClose={dismiss}
+                onOpenSidePanel={openSidePanel}
+                onEditDefinition={setOverrideDef}
+              />
 
-              {saved && (
-                <span className="wc-note wc-note-ok">
-                  <Check size={13} />
-                  <span>已加入单词本</span>
-                </span>
-              )}
-
-              {dupe === 'yes' && !saved && !queued && (
-                <span className="wc-note">已在当前牌组，无需重复保存</span>
-              )}
-
-              {save.kind === 'queued' && (
-                <span className="wc-note wc-note-ok">
-                  <Check size={13} />
-                  <span>Anki 未连接，{save.pending} 张卡片待同步</span>
-                </span>
-              )}
-
-              <div className="wc-spacer" />
-              <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
-            </div>
-
-            {save.kind === 'failed' && (
-              <div className="wc-error" role="alert" style={{ marginTop: 8 }}>
-                {save.message}
-                {' '}
+              <div className="wc-actions">
                 <button
-                  className="wc-link"
-                  onClick={() => void sendMessage({ type: 'open-options' })}
+                  type="button"
+                  className="wc-btn wc-btn-primary"
+                  onClick={() => void onSave()}
+                  disabled={saveDisabled}
+                  title={dupe === 'yes' && !hasNewSentenceContext ? '这个词已经在牌组里了' : '快捷键: Enter'}
                 >
-                  去设置
+                  <span>{saveLabel}</span>
+                  {!saveDisabled && <span className="wc-kbd">↵ Enter</span>}
                 </button>
+
+                {saved && (
+                  <span className="wc-note wc-note-ok">
+                    <Check size={13} />
+                    <span>已加入单词本</span>
+                  </span>
+                )}
+
+                {dupe === 'yes' && !saved && !queued && (
+                  <span className="wc-note">
+                    {hasNewSentenceContext ? '已在牌组中，可追加本次新语境' : '已在当前牌组，无需重复保存'}
+                  </span>
+                )}
+
+                {save.kind === 'queued' && (
+                  <span className="wc-note wc-note-ok">
+                    <Check size={13} />
+                    <span>Anki 未连接，{save.pending} 张卡片待同步</span>
+                  </span>
+                )}
+
+                <div className="wc-spacer" />
+                <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
               </div>
-            )}
-          </>
-        )}
+
+              {save.kind === 'failed' && (
+                <div className="wc-error" role="alert" style={{ marginTop: 8 }}>
+                  {save.message}
+                  {' '}
+                  <button
+                    className="wc-link"
+                    onClick={() => void sendMessage({ type: 'open-options' })}
+                  >
+                    去设置
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
