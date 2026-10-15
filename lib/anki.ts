@@ -30,6 +30,21 @@ export class AnkiError extends Error {
   }
 }
 
+/**
+ * 缓存当前会话已确认就绪的牌组+模型配置指纹，
+ * 避免每次点保存都重复发起 5 次牌组/模板刷新请求。
+ */
+let verifiedSchemaKey: string | null = null
+
+export function __resetAnkiSchemaCache(): void {
+  verifiedSchemaKey = null
+}
+
+function schemaFingerprint(s: Settings): string {
+  const { url, deckName, noteTypeName, ttsLang } = s.anki
+  return `${url.trim()}|${deckName.trim()}|${noteTypeName.trim()}|${ttsLang.trim()}`
+}
+
 async function invoke<T>(
   url: string,
   action: string,
@@ -132,6 +147,15 @@ export function modeDeckName(deckName: string, mode: AnkiMode): string {
   return `${deckName}::${mode}`
 }
 
+/**
+ * 统一双端音标格式：去重首尾斜杠后包裹为 `/.../`，
+ * 模板内直接使用 `{{Reading}}`，避免与桌面端混用时产生 `//...//` 双斜杠。
+ */
+export function normalizeReading(reading: string): string {
+  const trimmed = (reading ?? '').trim().replace(/^\/+|\/+$/g, '').trim()
+  return trimmed ? `/${trimmed}/` : ''
+}
+
 function cardTemplates(ttsLang: string) {
   return [
     {
@@ -143,7 +167,7 @@ function cardTemplates(ttsLang: string) {
       Back: `
 {{FrontSide}}
 <hr id=answer>
-<div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">/{{Reading}}/</span>{{/Reading}}</div>
+<div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">{{Reading}}</span>{{/Reading}}</div>
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
 <div class="wc-def">{{Definition}}</div>
 {{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
@@ -173,7 +197,7 @@ function cardTemplates(ttsLang: string) {
       Back: `
 {{FrontSide}}
 <hr id=answer>
-<div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">/{{Reading}}/</span>{{/Reading}}</div>
+<div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">{{Reading}}</span>{{/Reading}}</div>
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
 {{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
 `.trim(),
@@ -187,7 +211,7 @@ function cardTemplates(ttsLang: string) {
       Back: `
 {{FrontSide}}
 <hr id=answer>
-<div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">/{{Reading}}/</span>{{/Reading}}</div>
+<div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">{{Reading}}</span>{{/Reading}}</div>
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
 <div class="wc-def">{{Definition}}</div>
 {{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
@@ -407,6 +431,8 @@ export async function ensureDeckAndModel(s: Settings): Promise<void> {
     // 老模型（单模板 / 坏 Listening 正面）在这里修到最新四模式
     await updateModelTemplates(s)
   }
+
+  verifiedSchemaKey = schemaFingerprint(s)
 }
 
 /** 改了 ttsLang 或想升级样式时调用，把模板刷成最新的 */
@@ -469,7 +495,7 @@ export function buildNoteFields(card: CapturedCard, s: Settings): Record<string,
 
   return {
     Word: escapeHtml(card.entry.word),
-    Reading: escapeHtml(card.entry.reading),
+    Reading: escapeHtml(normalizeReading(card.entry.reading)),
     PartOfSpeech: escapeHtml(card.entry.partOfSpeech),
     Definition: escapeHtml(card.entry.definition),
     MemoryHook: escapeHtml(card.entry.memoryHook || ''),
@@ -482,8 +508,74 @@ export function buildNoteFields(card: CapturedCard, s: Settings): Record<string,
   }
 }
 
+interface AnkiNoteInfo {
+  noteId: number
+  fields?: Record<string, { value?: string }>
+}
+
+function appendField(existing: string | undefined, incoming: string, separator = '<br><br>'): string {
+  const cur = (existing ?? '').trim()
+  const next = incoming.trim()
+  if (!next) return cur
+  if (!cur) return next
+  if (cur.includes(next)) return cur
+  return `${cur}${separator}${next}`
+}
+
+/**
+ * 当词条已在牌组中且遇到新语境原句时，把新原句、译文与来源追加到现有笔记中。
+ * 若没有新语境或无法读取现有笔记，则返回 null 由调用方抛出重复提示。
+ */
+async function tryAppendContextToExistingNote(card: CapturedCard, s: Settings): Promise<number | null> {
+  const incomingSentence = card.sentence.trim()
+  if (!incomingSentence || incomingSentence.toLowerCase() === card.entry.word.trim().toLowerCase()) {
+    return null
+  }
+
+  try {
+    const existingIds = await findExisting(card.entry.word, s)
+    if (!Array.isArray(existingIds) || existingIds.length === 0) return null
+
+    const notes = await invoke<AnkiNoteInfo[]>(s.anki.url, 'notesInfo', { notes: [existingIds[0]] })
+    const note = Array.isArray(notes) ? notes[0] : null
+    if (!note || !note.fields) return null
+
+    const newFields = buildNoteFields(card, s)
+    const oldPlain = (note.fields.SentencePlain?.value ?? '').trim()
+    if (oldPlain.includes(newFields.SentencePlain)) {
+      return null
+    }
+
+    const updatedFields: Record<string, string> = {
+      Sentence: appendField(note.fields.Sentence?.value, newFields.Sentence),
+      SentencePlain: appendField(oldPlain, newFields.SentencePlain),
+      SentenceTranslation: appendField(note.fields.SentenceTranslation?.value, newFields.SentenceTranslation),
+      Source: appendField(note.fields.Source?.value, newFields.Source, ' · '),
+    }
+
+    if (!note.fields.MemoryHook?.value && newFields.MemoryHook) {
+      updatedFields.MemoryHook = newFields.MemoryHook
+    }
+    if (!note.fields.Reading?.value && newFields.Reading) {
+      updatedFields.Reading = newFields.Reading
+    }
+
+    await invoke(s.anki.url, 'updateNoteFields', {
+      note: {
+        id: note.noteId,
+        fields: updatedFields,
+      },
+    })
+    return note.noteId
+  } catch {
+    return null
+  }
+}
+
 export async function addNote(card: CapturedCard, s: Settings): Promise<number> {
-  await ensureDeckAndModel(s)
+  if (verifiedSchemaKey !== schemaFingerprint(s)) {
+    await ensureDeckAndModel(s)
+  }
 
   try {
     const noteId = await invoke<number>(s.anki.url, 'addNote', {
@@ -493,7 +585,7 @@ export async function addNote(card: CapturedCard, s: Settings): Promise<number> 
         fields: buildNoteFields(card, s),
         tags: ['word-catcher'],
         options: {
-          // 靠首个字段（Word）查重，同一个词第二次划到时 Anki 会拒绝，避免刷屏
+          // 靠首个字段（Word）查重，同一个词第二次划到时尝试合并新语境
           allowDuplicate: false,
           duplicateScope: 'deck',
         },
@@ -510,8 +602,13 @@ export async function addNote(card: CapturedCard, s: Settings): Promise<number> 
     return noteId
   } catch (err) {
     if (err instanceof AnkiError && /duplicate/i.test(err.message)) {
+      const mergedNoteId = await tryAppendContextToExistingNote(card, s)
+      if (mergedNoteId !== null) {
+        return mergedNoteId
+      }
       throw new AnkiError(`「${card.entry.word}」已经在牌组里了，不用重复添加。`, 'api')
     }
+    verifiedSchemaKey = null
     throw err
   }
 }
