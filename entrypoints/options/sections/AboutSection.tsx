@@ -29,7 +29,7 @@ export function AboutSection(_props: SectionProps) {
       id="sec-about"
       index={6}
       title="关于 Word Catcher"
-      intro={<>Word Catcher 是一个开源的网页划词查词与 Anki 快速联动扩展。</>}
+      intro="开源、本地优先的网页划词查词、语境积累与复习工具。"
     >
       <div className="about-card" style={{
         padding: '16px 18px',
@@ -44,7 +44,7 @@ export function AboutSection(_props: SectionProps) {
               Word Catcher <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--teal)', fontFamily: 'var(--font-sans)', background: 'var(--teal-wash)', padding: '2px 8px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hairline)', marginLeft: 6 }}>v{version}</span>
             </div>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
-              阅读时查词，保存词义与原句，随后在 Anki 中复习。
+              在阅读中随时查词，连同真实语境存入本地单词本，通过内置卡片自测或联动桌面端、Anki 高效复习。
             </p>
           </div>
         </div>
@@ -107,10 +107,10 @@ export function AboutSection(_props: SectionProps) {
       }}>
         <div style={{ fontWeight: 600, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <ShieldCheck size={14} color="var(--teal)" />
-          <span>开源许可与致谢 (Licenses & Acknowledgments)</span>
+          <span>开源许可与致谢</span>
         </div>
         <div>
-          本扩展基于 <strong>MIT License</strong> 开源。特别鸣谢以下开源项目提供的支持：
+          本扩展基于 <strong>MIT License</strong> 开源。感谢以下开源项目提供的数据与协议支持：
         </div>
         <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
           <li>
@@ -121,7 +121,7 @@ export function AboutSection(_props: SectionProps) {
           <li>
             <a href="https://git.sr.ht/~foosoft/anki-connect" target="_blank" rel="noreferrer" style={{ color: 'var(--teal)', textDecoration: 'none' }}>
               <strong>Anki-Connect</strong>
-            </a> (@FooSoft)：提供与本地 Anki 桌面端通信的 API 桥梁。
+            </a> (@FooSoft)：提供与本地 Anki 桌面端通信的接口支持。
           </li>
         </ul>
       </div>

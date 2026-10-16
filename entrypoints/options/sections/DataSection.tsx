@@ -1,69 +1,64 @@
-import { Download, Inbox, Laptop, Trash2, Upload } from 'lucide-react'
+import { BookOpen, Download, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { backupFileName, buildBackup, describeSettings, parseBackup } from '@/lib/backup'
 import { sendMessage } from '@/lib/messaging'
 import { saveSettings } from '@/lib/settings'
-import { contextKey } from '@/lib/learning'
-import type { CapturedCard } from '@/lib/types'
 import { Section } from '../components/Section'
-import { StatusChip, Switch } from '../components/controls'
 import type { SectionProps, Status } from './types'
 
-function formatTime(ms: number): string {
-  if (!ms) return ''
-  const d = new Date(ms)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
 export function DataSection({ s, onChange }: SectionProps) {
-  const [queue, setQueue] = useState<CapturedCard[]>([])
-  const [queueStatus, setQueueStatus] = useState<Status>({ kind: 'idle' })
+  const [libraryCount, setLibraryCount] = useState(0)
+  const [libraryStatus, setLibraryStatus] = useState<Status>({ kind: 'idle' })
   const [cacheSize, setCacheSize] = useState(0)
   const [cacheNote, setCacheNote] = useState<string | null>(null)
   const [backupStatus, setBackupStatus] = useState<Status>({ kind: 'idle' })
-  const [desktopAlive, setDesktopAlive] = useState<boolean | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const libraryFileRef = useRef<HTMLInputElement>(null)
 
   const refresh = () => {
-    void sendMessage({ type: 'pending-list' }).then((res) => {
-      if (res.ok) setQueue(res.data.cards)
+    void sendMessage({ type: 'library-list' }).then((res) => {
+      if (res.ok) setLibraryCount(res.data.length)
     })
     void sendMessage({ type: 'cache-stats' }).then((res) => {
       if (res.ok) setCacheSize(res.data.size)
-    })
-    void sendMessage({ type: 'check-desktop-bridge' }).then((res) => {
-      if (res.ok) setDesktopAlive(res.data.alive)
     })
   }
 
   useEffect(refresh, [])
 
-  const onFlush = async () => {
-    setQueueStatus({ kind: 'busy' })
-    const res = await sendMessage({ type: 'flush-pending' })
+  const onExportLibrary = async () => {
+    const res = await sendMessage({ type: 'library-export' })
     if (!res.ok) {
-      setQueueStatus({ kind: 'err', text: res.error })
+      setLibraryStatus({ kind: 'err', text: res.error })
       return
     }
-
-    const { written, dropped, remaining } = res.data
-    refresh()
-    setQueueStatus(remaining > 0
-      ? { kind: 'err', text: `写入 ${written} 张后连接中断，还剩 ${remaining} 张。确认 Anki 在运行后再试。` }
-      : { kind: 'ok', text: `写入 ${written} 张${dropped > 0 ? `，跳过 ${dropped} 张重复的` : ''}。` })
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/json' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `word-catcher-library-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setLibraryStatus({ kind: 'ok', text: `已导出 ${libraryCount} 条单词本语境记录。` })
   }
 
-  const onRemove = async (card: CapturedCard) => {
-    const res = await sendMessage({ type: 'remove-pending', payload: { word: card.entry.word, contextKey: contextKey(card) } })
-    if (res.ok) refresh()
-  }
-
-  const onClearQueue = async () => {
-    const res = await sendMessage({ type: 'clear-pending' })
-    if (res.ok) {
-      refresh()
-      setQueueStatus({ kind: 'ok', text: '队列已清空。' })
+  const onImportLibraryFile = async (file: File) => {
+    setLibraryStatus({ kind: 'busy' })
+    try {
+      const text = await file.text()
+      const res = await sendMessage({ type: 'library-import', payload: { json: text } })
+      if (res.ok) {
+        setLibraryCount(res.data.records.length)
+        setLibraryStatus({
+          kind: 'ok',
+          text: res.data.added > 0
+            ? `已导入 ${res.data.added} 条新的语境记录（当前共 ${res.data.records.length} 条）。`
+            : '备份文件已解析，未发现新的语境记录。',
+        })
+      } else {
+        setLibraryStatus({ kind: 'err', text: res.error })
+      }
+    } catch {
+      setLibraryStatus({ kind: 'err', text: '无法读取所选文件，请确认文件是有效的 JSON 备份。' })
     }
   }
 
@@ -72,8 +67,8 @@ export function DataSection({ s, onChange }: SectionProps) {
     if (!res.ok) return
     setCacheSize(0)
     setCacheNote(res.data.cleared > 0
-      ? `已清掉 ${res.data.cleared} 条，下次划到这些词会重新请求 AI。`
-      : '缓存本来就是空的。')
+      ? `已清理 ${res.data.cleared} 条缓存，下次划选将重新生成。`
+      : '当前没有缓存记录。')
   }
 
   const onExport = async () => {
@@ -91,7 +86,7 @@ export function DataSection({ s, onChange }: SectionProps) {
     a.click()
     URL.revokeObjectURL(url)
 
-    setBackupStatus({ kind: 'ok', text: `已导出配置与最近查词记录。文件里包含明文 API key，注意保管。` })
+    setBackupStatus({ kind: 'ok', text: '已导出插件配置与查词历史。导出文件中包含 API Key，请妥善保管。' })
   }
 
   const onImportFile = async (file: File) => {
@@ -117,127 +112,63 @@ export function DataSection({ s, onChange }: SectionProps) {
   return (
     <Section
       id="sec-data"
-      index={5}
-      title="数据与维护"
-      intro="管理桌面端联动、查看待同步卡片、清理缓存或备份配置。"
+      index={4}
+      title="数据与单词本"
+      intro="管理本地单词本备份、插件配置迁移与 AI 释义缓存。"
     >
-      {/* ── Windows 桌面版联动 ── */}
+      {/* ── 本地单词本数据 ── */}
       <div className="block">
         <div className="block-head">
-          <Laptop size={14} className="inline-icon" />
-          <strong>Windows 桌面版联动</strong>
-          {desktopAlive !== null && (
-            <StatusChip ok={desktopAlive} okText="桌面端在线" badText="未检测到桌面端" />
-          )}
+          <BookOpen size={14} className="inline-icon" />
+          <strong>本地单词本备份</strong>
+          <span className="chip">{libraryCount} 条语境</span>
         </div>
         <p className="block-hint">
-          开启后，在网页中点击保存生词时，除了写入 Anki，还会自动同步存入 Windows 桌面版的本地 SQLite 生词库。
-        </p>
-        <div className="field" style={{ marginTop: 12 }}>
-          <span>自动同步至桌面端</span>
-          <Switch
-            checked={s.desktopBridge?.enabled ?? true}
-            onChange={enabled => onChange({
-              ...s,
-              desktopBridge: { ...s.desktopBridge, enabled },
-            })}
-          />
-        </div>
-        <label className="field" style={{ marginTop: 10 }}>
-          <span>桥接地址</span>
-          <input
-            value={s.desktopBridge?.url ?? 'http://127.0.0.1:18765'}
-            placeholder="http://127.0.0.1:18765"
-            onChange={e => onChange({
-              ...s,
-              desktopBridge: { ...s.desktopBridge, url: e.target.value },
-            })}
-          />
-        </label>
-      </div>
-
-      {/* ── 待写队列 ── */}
-      <div className="block">
-        <div className="block-head">
-          <Inbox size={14} className="inline-icon" />
-          <strong>待写队列</strong>
-          {queue.length > 0 && <span className="chip">{queue.length}</span>}
-        </div>
-        <p className="block-hint">
-          Anki 未连接时，卡片会暂存在这里。打开 Anki 后可继续同步。
-        </p>
-
-        {queue.length === 0
-          ? <p className="empty">没有待同步的卡片。</p>
-          : (
-              <>
-                <ul className="queue-list">
-                  {queue.map(card => (
-                    <li key={contextKey(card)}>
-                      <div className="queue-item">
-                        <span className="queue-word">{card.entry.word}</span>
-                        <span className="queue-def">{card.entry.definition}</span>
-                      </div>
-                      <span className="queue-time">{formatTime(card.createdAt)}</span>
-                      <button
-                        type="button"
-                        className="btn btn-icon btn-danger"
-                        title={`取消同步「${card.entry.word}」的这条语境`}
-                        onClick={() => void onRemove(card)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="block-actions">
-                  <button
-                    className="btn"
-                    disabled={queueStatus.kind === 'busy'}
-                    onClick={() => void onFlush()}
-                  >
-                    {queueStatus.kind === 'busy' ? '写入中…' : '全部补写进 Anki'}
-                  </button>
-                  <button className="btn" onClick={() => void onClearQueue()}>清空队列</button>
-                </div>
-              </>
-            )}
-
-        {queueStatus.kind === 'ok' && <p className="ok">{queueStatus.text}</p>}
-        {queueStatus.kind === 'err' && <p className="err">{queueStatus.text}</p>}
-      </div>
-
-      {/* ── AI 缓存 ── */}
-      <div className="block">
-        <div className="block-head">
-          <strong>AI 缓存</strong>
-          <span className="chip">{cacheSize}</span>
-        </div>
-        <p className="block-hint">
-          同一个词在同一句话里反复划选不会重复请求 AI。缓存只在内存里，
-          浏览器回收后台进程时自动清空。改了模型想立刻看到新结果时可以手动清一次。
+          导出或导入保存在本地「单词本」中的所有生词、原句语境、AI 详解与个人笔记，支持与 Windows 桌面端互相导入。
         </p>
         <div className="block-actions">
-          <button className="btn" onClick={() => void onClearCache()}>清空缓存</button>
+          <button className="btn btn-icon" onClick={() => void onExportLibrary()}>
+            <Download size={14} />
+            <span>导出单词本 JSON</span>
+          </button>
+          <button
+            className="btn btn-icon"
+            disabled={libraryStatus.kind === 'busy'}
+            onClick={() => libraryFileRef.current?.click()}
+          >
+            <Upload size={14} />
+            <span>导入单词本 JSON</span>
+          </button>
+          <input
+            ref={libraryFileRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) void onImportLibraryFile(file)
+            }}
+          />
         </div>
-        {cacheNote && <p className="ok">{cacheNote}</p>}
+        {libraryStatus.kind === 'ok' && <p className="ok">{libraryStatus.text}</p>}
+        {libraryStatus.kind === 'err' && <p className="err">{libraryStatus.text}</p>}
       </div>
 
-      {/* ── 配置备份 ── */}
+      {/* ── 配置与查词历史备份 ── */}
       <div className="block">
         <div className="block-head">
-          <strong>配置与历史备份</strong>
+          <strong>设置与查词历史备份</strong>
         </div>
         <p className="block-hint">
-          换机器时把配置与查词记录整份搬过去（同时支持直接导入 Windows 桌面版的设置文件）。
-          <strong className="warn-inline">导出的文件里包含明文 API key</strong>
-          ，和 key 本身一样敏感，别随手发出去。
+          更换设备时可将当前设置与最近查词历史导出迁移（同样兼容导入 Windows 桌面端的设置文件）。
+          <strong className="warn-inline">导出文件中包含明文 API Key</strong>
+          ，请注意保管，勿随意分享。
         </p>
         <div className="block-actions">
           <button className="btn btn-icon" onClick={() => void onExport()}>
             <Download size={14} />
-            <span>导出配置与记录</span>
+            <span>导出设置与历史</span>
           </button>
           <button
             className="btn btn-icon"
@@ -245,7 +176,7 @@ export function DataSection({ s, onChange }: SectionProps) {
             onClick={() => fileRef.current?.click()}
           >
             <Upload size={14} />
-            <span>导入配置</span>
+            <span>导入设置文件</span>
           </button>
           <input
             ref={fileRef}
@@ -261,6 +192,21 @@ export function DataSection({ s, onChange }: SectionProps) {
         </div>
         {backupStatus.kind === 'ok' && <p className="ok">{backupStatus.text}</p>}
         {backupStatus.kind === 'err' && <p className="err">{backupStatus.text}</p>}
+      </div>
+
+      {/* ── AI 缓存 ── */}
+      <div className="block">
+        <div className="block-head">
+          <strong>AI 释义缓存</strong>
+          <span className="chip">{cacheSize}</span>
+        </div>
+        <p className="block-hint">
+          同一句话中的同一个词不会重复请求 AI。缓存仅保存在运行内存中，更换模型后如需立即重新生成，可手动清理。
+        </p>
+        <div className="block-actions">
+          <button className="btn" onClick={() => void onClearCache()}>清空缓存</button>
+        </div>
+        {cacheNote && <p className="ok">{cacheNote}</p>}
       </div>
     </Section>
   )

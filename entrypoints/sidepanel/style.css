@@ -1,3 +1,4 @@
+@import '@/lib/components/learning.css';
 @import '@/lib/components/context-block.css';
 @import '@/lib/components/dictionary-view.css';
 @import '@/assets/tokens.css';
@@ -576,3 +577,201 @@ input:focus-visible {
 .sp-card-word-wrap .sp-card-word-sentence { font: 600 15px/1.5 var(--font-sans); color: var(--teal); }
 .sp-card-def { white-space: pre-wrap; }
 .sp-card .learning-details { border-top: 1px solid var(--hairline); padding-top: 9px; }
+
+/* ── 侧边栏工作台、语境补充与历史筛选 ── */
+.sp-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sp-state-compact {
+  min-height: 150px;
+  padding: 22px 16px;
+}
+
+.sp-quick-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sp-quick-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.sp-quick-icon {
+  color: var(--teal);
+  flex-shrink: 0;
+}
+
+.sp-quick-card p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.sp-recent-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sp-recent-chip {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.sp-recent-chip:hover {
+  border-color: var(--teal);
+  background: var(--teal-wash);
+}
+
+.sp-recent-chip-word {
+  font-family: var(--font-serif);
+  font-weight: 650;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.sp-recent-chip-def {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-context-editor {
+  margin-top: 2px;
+}
+
+.sp-context-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sp-context-edit-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.sp-context-edit-trigger:hover {
+  color: var(--teal);
+}
+
+.sp-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--teal);
+  font-size: 11.5px;
+  text-decoration: none;
+  max-width: 180px;
+}
+
+.sp-source-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-source-link:hover {
+  text-decoration: underline;
+}
+
+.sp-context-editor-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+.sp-context-editor-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.sp-context-editor-label textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.sp-context-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sp-history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sp-history-filter {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.sp-history-sentence {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}

@@ -89,8 +89,8 @@ export default function App() {
     setFlush({
       kind: 'done',
       text: remaining > 0
-        ? `写入 ${written} 张，还剩 ${remaining} 张，确认 Anki 在运行后再试。`
-        : `写入 ${written} 张${dropped > 0 ? `，跳过 ${dropped} 张重复的` : ''}。`,
+        ? `已同步 ${written} 张卡片，仍有 ${remaining} 张待同步。请确认 Anki 正在运行后重试。`
+        : `已同步 ${written} 张卡片${dropped > 0 ? `，已跳过 ${dropped} 张重复卡片` : ''}。`,
     })
   }
 
@@ -139,12 +139,12 @@ export default function App() {
     setHistoryBusy(null)
     if (res.ok) {
       setHistoryList(list => list.map(historyItem => (
-        historyItem.id === item.id ? { ...historyItem, savedToAnki: true } : historyItem
+        historyItem.id === item.id ? { ...historyItem, savedLocally: true, savedToAnki: !res.data.queued } : historyItem
       )))
       if (res.data.queued && res.data.pending !== undefined) setPending(res.data.pending)
       setHistoryFeedback({
         kind: 'ok',
-        text: res.data.queued ? `Anki 未连接，「${item.word}」已安全暂存。` : `「${item.word}」已保存。`,
+        text: `「${item.word}」已存入单词本。`,
       })
     } else {
       setHistoryFeedback({ kind: 'err', text: res.error })
@@ -205,6 +205,7 @@ export default function App() {
   const active = activeAiProfile(s)
   const multiProfile = s.ai.profiles.length > 1
   const dictReady = dictMeta.status === 'ready' && dictMeta.entryCount > 0
+  const ankiEnabled = s.anki.enabled !== false
 
   return (
     <div className="pop">
@@ -217,7 +218,7 @@ export default function App() {
           <button
             type="button"
             className="pop-gear-btn"
-            title="在侧边栏中打开"
+            title="在侧边栏中打开单词本与查词"
             aria-label="在侧边栏中打开"
             onClick={() => void openSidePanel()}
           >
@@ -265,40 +266,6 @@ export default function App() {
       {tab === 'status' ? (
         <>
           <ul className="checks">
-            <li className={aiReady ? 'ok' : 'bad'}>
-              <span className="dot" />
-              <div className="check-body">
-                <div className="check-head-row">
-                  <strong>AI 语境释义</strong>
-                  <span className={`status-badge ${aiReady ? 'status-badge-ok' : 'status-badge-bad'}`}>
-                    {aiReady ? '已配置' : '未配置'}
-                  </span>
-                </div>
-                {multiProfile && (
-                  <div className="chips" role="radiogroup" aria-label="AI 配置">
-                    {s.ai.profiles.map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={p.id === s.ai.activeId}
-                        className={`chip ${p.id === s.ai.activeId ? 'chip-on' : ''}`}
-                        title={`${p.name} · ${p.model || '未填模型'}`}
-                        onClick={() => switchProfile(p.id)}
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <p>
-                  {aiReady
-                    ? (multiProfile ? active.model : `${active.name} · ${active.model}`)
-                    : '可在设置中添加 AI 配置'}
-                </p>
-              </div>
-            </li>
-
             <li className={dictReady ? 'ok' : 'wait'}>
               <span className="dot" />
               <div className="check-body">
@@ -312,8 +279,8 @@ export default function App() {
                   {dictReady
                     ? `已就绪 (${dictMeta.entryCount.toLocaleString()} 词)`
                     : dictMeta.status === 'downloading'
-                      ? '正在下载安装...'
-                      : '未安装（可在设置中下载）'}
+                      ? '正在下载安装…'
+                      : '可在设置中一键下载'}
                 </p>
               </div>
             </li>
@@ -338,41 +305,76 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <p>长句和词典未收录的词使用在线翻译。</p>
+                <p>长句和词典未收录的词自动使用在线翻译。</p>
               </div>
             </li>
 
-            <li className={anki.kind === 'ok' ? 'ok' : anki.kind === 'checking' ? 'wait' : 'bad'}>
+            <li className={aiReady ? 'ok' : 'wait'}>
               <span className="dot" />
               <div className="check-body">
                 <div className="check-head-row">
-                  <strong>Anki 单词本</strong>
-                  <span className={`status-badge ${anki.kind === 'ok' ? 'status-badge-ok' : anki.kind === 'checking' ? 'status-badge-wait' : 'status-badge-bad'}`}>
-                    {anki.kind === 'ok' ? '已连接' : anki.kind === 'checking' ? '检测中' : '未连接'}
+                  <strong>AI 语境详解</strong>
+                  <span className={`status-badge ${aiReady ? 'status-badge-ok' : 'status-badge-wait'}`}>
+                    {aiReady ? '已配置' : '待配置'}
+                  </span>
+                </div>
+                {multiProfile && (
+                  <div className="chips" role="radiogroup" aria-label="AI 配置">
+                    {s.ai.profiles.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={p.id === s.ai.activeId}
+                        className={`chip ${p.id === s.ai.activeId ? 'chip-on' : ''}`}
+                        title={`${p.name} · ${p.model || '未填模型'}`}
+                        onClick={() => switchProfile(p.id)}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <p>
+                  {aiReady
+                    ? (multiProfile ? active.model : `${active.name} · ${active.model}`)
+                    : '可在设置中配置 AI 模型'}
+                </p>
+              </div>
+            </li>
+
+            <li className={ankiEnabled && anki.kind === 'ok' ? 'ok' : 'wait'}>
+              <span className="dot" />
+              <div className="check-body">
+                <div className="check-head-row">
+                  <strong>Anki 外部拓展</strong>
+                  <span className={`status-badge ${ankiEnabled && anki.kind === 'ok' ? 'status-badge-ok' : 'status-badge-wait'}`}>
+                    {!ankiEnabled ? '已关闭' : anki.kind === 'ok' ? '已连接' : anki.kind === 'checking' ? '检测中' : '按需开启'}
                   </span>
                 </div>
                 <p>
-                  {anki.kind === 'checking' && '检测中…'}
-                  {anki.kind === 'ok' && `牌组「${s.anki.deckName}」`}
-                  {anki.kind === 'err' && '未连接，请打开 Anki 桌面版'}
+                  {!ankiEnabled && '生词默认保存在内置单词本'}
+                  {ankiEnabled && anki.kind === 'checking' && '正在检测本地 Anki…'}
+                  {ankiEnabled && anki.kind === 'ok' && `同步至牌组「${s.anki.deckName}」`}
+                  {ankiEnabled && anki.kind === 'err' && '生词保存在本地单词本；打开 Anki 可同步卡片'}
                 </p>
               </div>
             </li>
           </ul>
 
-          {pending > 0 && (
+          {ankiEnabled && pending > 0 && (
             <div className="queue">
               <div className="queue-head">
                 <Inbox size={14} />
-                <span>{pending} 张卡片待写入 Anki</span>
+                <span>{pending} 张卡片待同步至 Anki</span>
               </div>
-              <p>Anki 离线时保存的生词已暂存，打开 Anki 后即可同步。</p>
+              <p>词条已保存在本地单词本。启动 Anki 桌面版后可批量同步。</p>
               <button
                 className="btn btn-quiet"
                 disabled={flush.kind === 'busy'}
                 onClick={() => void onFlush()}
               >
-                {flush.kind === 'busy' ? '写入中…' : '同步到 Anki'}
+                {flush.kind === 'busy' ? '同步中…' : '同步到 Anki'}
               </button>
             </div>
           )}
@@ -382,7 +384,7 @@ export default function App() {
           <div className="pop-footer">
             <button className="btn" onClick={() => void openSidePanel()}>
               <PanelRight size={13} />
-              打开侧边栏
+              打开侧边栏（单词本与复习）
             </button>
           </div>
         </>
@@ -398,7 +400,7 @@ export default function App() {
           {historyList.length > 0 ? (
             <>
               <div className="pop-history-head-bar">
-                <span>最近查过的 {historyList.length} 条生词</span>
+                <span>最近查过的 {historyList.length} 条记录</span>
                 {!confirmClear && (
                   <button
                     type="button"
@@ -412,7 +414,7 @@ export default function App() {
               </div>
               {confirmClear && (
                 <div className="pop-clear-confirm" role="alert">
-                  <span>清空全部记录？</span>
+                  <span>确定清空全部 {historyList.length} 条查词历史？</span>
                   <button type="button" onClick={() => setConfirmClear(false)}>取消</button>
                   <button type="button" className="danger" onClick={() => void onClearHistory()}>确认</button>
                 </div>
@@ -430,13 +432,13 @@ export default function App() {
                   <div className="pop-history-item-top">
                     <span className="pop-history-word">{item.word}</span>
                     <div className="pop-history-actions">
-                      {item.savedToAnki ? (
-                        <span className="pop-badge-saved">已保存</span>
+                      {item.savedLocally || item.savedToAnki ? (
+                        <span className="pop-badge-saved">已收藏</span>
                       ) : (
                         <button
                           type="button"
                           className="pop-btn-icon-sm"
-                          title={historyBusy === item.id ? '正在保存' : '保存'}
+                          title={historyBusy === item.id ? '正在保存' : '存入单词本'}
                           aria-label={`保存 ${item.word}`}
                           disabled={historyBusy !== null}
                           onClick={() => void onSaveHistoryItem(item)}
@@ -450,7 +452,7 @@ export default function App() {
                         <button
                           type="button"
                           className="pop-btn-icon-sm"
-                          title="发音"
+                          title="朗读"
                           aria-label={`朗读 ${item.word}`}
                           onClick={() => onSpeakWord(item.word)}
                         >

@@ -115,6 +115,8 @@ export const settingsSchema = z.object({
     downloadUrl: 'https://github.com/ahpxex/open-dictionary/releases/latest/download/distribution.jsonl.gz',
   }),
   anki: z.object({
+    /** 是否启用 Anki 自动同步拓展（关闭时仅保存在本地单词本） */
+    enabled: z.boolean().default(true),
     url: z.string().default('http://127.0.0.1:8765'),
     deckName: z.string().default('Word Catcher'),
     noteTypeName: z.string().default('Word Catcher'),

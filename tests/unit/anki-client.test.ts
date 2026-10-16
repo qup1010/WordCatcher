@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AnkiError,
+  __resetAnkiSchemaCache,
   addNote,
   checkConnection,
   ensureDeckAndModel,
@@ -49,6 +50,7 @@ const sampleCard: CapturedCard = {
 }
 
 afterEach(() => {
+  __resetAnkiSchemaCache()
   vi.unstubAllGlobals()
 })
 
@@ -77,7 +79,7 @@ describe('checkConnection', () => {
     const err = await checkConnection(settings.anki.url).catch(e => e)
     expect(err).toBeInstanceOf(AnkiError)
     expect(err.kind).toBe('unreachable')
-    expect(err.message).toContain('没有响应')
+    expect(err.message).toContain('响应')
     expect(err.message).not.toContain('正在运行')
   })
 
@@ -260,7 +262,7 @@ describe('addNote', () => {
     const err = await addNote(sampleCard, settings).catch(e => e)
     expect(err).toBeInstanceOf(AnkiError)
     expect(err.message).toContain('devastate')
-    expect(err.message).toContain('已经在牌组里')
+    expect(err.message).toMatch(/已经在牌组里|已在当前牌组中/)
   })
 
   it('其他错误原样上抛，不被重复词分支吞掉', async () => {
@@ -317,6 +319,31 @@ describe('findExisting', () => {
 
 
 describe('learning context identity', () => {
+  it('does not append a legacy capture to another context after a duplicate error', async () => {
+    const calls = mockAnki((action) => {
+      if (action === 'deckNames' || action === 'modelNames') return []
+      if (action === 'addNote') return new Error('cannot create note because it is a duplicate')
+      if (action === 'findNotes') return [41]
+      if (action === 'notesInfo') return [{ noteId: 41, fields: { SentencePlain: { value: 'A different context.' } } }]
+      return null
+    })
+    await expect(addNote(sampleCard, settings)).rejects.toBeInstanceOf(AnkiError)
+    expect(calls.some(c => c.action === 'notesInfo' || c.action === 'updateNoteFields')).toBe(false)
+  })
+
+  it('reuses schema checks across saves and refreshes them when settings change', async () => {
+    const calls = mockAnki((action) => {
+      if (action === 'deckNames' || action === 'modelNames' || action === 'findCards') return []
+      if (action === 'addNote') return 42
+      return null
+    })
+    await addNote(sampleCard, settings)
+    await addNote(sampleCard, settings)
+    expect(calls.filter(c => c.action === 'deckNames')).toHaveLength(1)
+    await addNote(sampleCard, { ...settings, anki: { ...settings.anki, ttsLang: 'en_GB' } })
+    expect(calls.filter(c => c.action === 'deckNames')).toHaveLength(2)
+  })
+
   it('creates separate notes for two contexts of the same word', async () => {
     let id = 40
     const calls = mockAnki((action) => {

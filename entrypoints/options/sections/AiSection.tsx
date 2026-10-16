@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Eye, EyeOff, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { sendMessage } from '@/lib/messaging'
 import { activeAiProfile } from '@/lib/settings'
@@ -23,17 +23,18 @@ type TestResult =
   | { kind: 'no-structured', reply: string, detail: string }
   | { kind: 'err', text: string }
 
+const PRESET_DEFAULT_MODELS = new Set(PROVIDER_PRESETS.map(p => p.model))
+
 export function AiSection({ s, onChange, flush }: SectionProps) {
   const [test, setTest] = useState<TestResult>({ kind: 'idle' })
   const [models, setModels] = useState<string[]>([])
   const [modelsStatus, setModelsStatus] = useState<Status>({ kind: 'idle' })
   const [modelOpen, setModelOpen] = useState(false)
+  const [showKey, setShowKey] = useState(false)
 
   const active = activeAiProfile(s)
-  /** 按当前 Base URL 反推：匹配到预设就高亮它，否则高亮「自定义」 */
   const matchedPreset = matchProviderPreset(active.baseURL)
 
-  /** 换了配置之后，上一套的模型列表和测试结果都不再作数 */
   const resetFeedback = () => {
     setModels([])
     setModelsStatus({ kind: 'idle' })
@@ -50,13 +51,22 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
       },
     })
 
-  /** 点预设：只写 baseURL，不动 model / apiKey / 名称 */
+  /**
+   * 点服务商预设：填入对应的 Base URL，且当模型为空或仍处于其他预设默认模型时，
+   * 自动同步填入该服务商的推荐模型，避免切换服务商后因残留 gpt-4o-mini 导致测试报错。
+   */
   const applyProviderPreset = (preset: ProviderPreset | null) => {
     if (preset) {
       if (matchedPreset?.baseURL === preset.baseURL) return
-      patchProfile({ baseURL: preset.baseURL })
+      const curModel = active.model.trim()
+      const shouldAutoFillModel = !curModel || PRESET_DEFAULT_MODELS.has(curModel)
+      const shouldAutoFillName = active.name === '默认' || PROVIDER_PRESETS.some(p => p.label === active.name)
+      patchProfile({
+        baseURL: preset.baseURL,
+        ...(shouldAutoFillModel ? { model: preset.model } : {}),
+        ...(shouldAutoFillName ? { name: preset.label } : {}),
+      })
     } else {
-      // 自定义：若当前是某预设地址，清空让用户自己填；已是自定义则不动
       if (!matchedPreset) return
       patchProfile({ baseURL: '' })
     }
@@ -77,7 +87,6 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
       ai: {
         profiles: [
           ...s.ai.profiles,
-          // 以当前配置为模板起步，改名和 key 就能用
           { ...active, id, name: `配置 ${s.ai.profiles.length + 1}` },
         ],
         activeId: id,
@@ -98,8 +107,8 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
     const res = await sendMessage({ type: 'list-models' })
     if (res.ok) {
       setModels(res.data.models)
-      setModelsStatus({ kind: 'ok', text: `已拉取 ${res.data.models.length} 个模型` })
-      setModelOpen(true) // 拉完直接展开，省一次点击
+      setModelsStatus({ kind: 'ok', text: `已获取 ${res.data.models.length} 个可用模型` })
+      setModelOpen(true)
     } else {
       setModelsStatus({ kind: 'err', text: res.error })
     }
@@ -124,9 +133,9 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
   return (
     <Section
       id="sec-ai"
-      index={0}
-      title="AI 接口"
-      intro="结合原句解释词义并翻译整句。填写兼容 OpenAI 格式的接口配置。"
+      index={3}
+      title="AI 语境详解"
+      intro="结合原句语境解析词义、固定搭配与用法，并翻译整句。支持所有兼容 OpenAI 协议的服务商。"
     >
       <div className="profiles">
         {s.ai.profiles.map(p => (
@@ -142,7 +151,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
         <button
           type="button"
           className="profile-chip profile-add"
-          title="新建配置"
+          title="新增一套 AI 配置"
           onClick={addProfile}
         >
           <Plus size={13} />
@@ -156,7 +165,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
           <button
             type="button"
             className="btn btn-icon btn-danger"
-            title="删除这套配置"
+            title="删除当前配置"
             onClick={removeProfile}
           >
             <Trash2 size={14} />
@@ -165,14 +174,14 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
       </label>
 
       <div className="field field-top">
-        <span>服务商</span>
+        <span>服务商预设</span>
         <div className="provider-chips" role="radiogroup" aria-label="服务商预设">
           <button
             type="button"
             role="radio"
             aria-checked={!matchedPreset}
             className={`provider-chip ${!matchedPreset ? 'provider-on' : ''}`}
-            title="自己填写接口地址"
+            title="手动填写接口地址"
             onClick={() => applyProviderPreset(null)}
           >
             自定义
@@ -186,7 +195,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
                 role="radio"
                 aria-checked={on}
                 className={`provider-chip ${on ? 'provider-on' : ''}`}
-                title={p.title ?? p.label}
+                title={p.title ? `${p.title}（推荐模型：${p.model}）` : `推荐模型：${p.model}`}
                 onClick={() => applyProviderPreset(p)}
               >
                 {p.label}
@@ -196,37 +205,46 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
         </div>
       </div>
       <p className="hint">
-        点预设只填入接口地址，模型请自行填写或拉取列表。
+        选择预设将自动填入接口地址与推荐模型。
         {matchedPreset?.hint ? ` ${matchedPreset.hint}` : ''}
       </p>
 
       <label className="field">
-        <span>Base URL</span>
+        <span>接口地址</span>
         <input
           value={active.baseURL}
-          placeholder="https://api.example.com/v1"
+          placeholder="https://api.openai.com/v1"
           onChange={e => patchProfile({ baseURL: e.target.value })}
         />
       </label>
-      <p className="hint">以 /v1 这类版本路径结尾。</p>
+      <p className="hint">通常以 <code>/v1</code> 或 <code>/v4</code> 等版本路径结尾。</p>
 
-      <label className="field">
+      <div className="field">
         <span>API Key</span>
         <input
-          type="password"
+          type={showKey ? 'text' : 'password'}
           value={active.apiKey}
           placeholder="sk-…"
           onChange={e => patchProfile({ apiKey: e.target.value })}
         />
-      </label>
-      <p className="hint">仅保存在本机浏览器里。</p>
+        <button
+          type="button"
+          className="btn btn-icon"
+          title={showKey ? '隐藏 API Key' : '显示 API Key'}
+          aria-label={showKey ? '隐藏 API Key' : '显示 API Key'}
+          onClick={() => setShowKey(v => !v)}
+        >
+          {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      </div>
+      <p className="hint">密钥仅保存在当前浏览器本地存储中，不会上传至第三方服务器。</p>
 
       <div className="field">
-        <span>模型</span>
+        <span>模型名称</span>
         <Combobox
           value={active.model}
           options={models}
-          placeholder="gpt-4o-mini"
+          placeholder={matchedPreset?.model || 'gpt-4o-mini'}
           open={modelOpen}
           onOpenChange={setModelOpen}
           onChange={v => patchProfile({ model: v })}
@@ -234,14 +252,27 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
         <button
           type="button"
           className="btn btn-icon"
-          title="从端点拉取模型列表"
+          title="从接口获取可用模型列表"
           disabled={modelsStatus.kind === 'busy'}
           onClick={() => void onFetchModels()}
         >
           <RefreshCw size={14} className={modelsStatus.kind === 'busy' ? 'spin' : ''} />
-          <span>拉取列表</span>
+          <span>获取列表</span>
         </button>
       </div>
+      {matchedPreset && active.model !== matchedPreset.model && (
+        <p className="hint">
+          当前服务商推荐使用 <code>{matchedPreset.model}</code>，
+          <button
+            type="button"
+            className="save-retry"
+            style={{ marginLeft: 4 }}
+            onClick={() => patchProfile({ model: matchedPreset.model })}
+          >
+            点击填入
+          </button>
+        </p>
+      )}
       {modelsStatus.kind === 'ok' && <p className="hint hint-ok">{modelsStatus.text}</p>}
       {modelsStatus.kind === 'err' && <p className="hint hint-err">{modelsStatus.text}</p>}
 
@@ -254,7 +285,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
           {EXPLAIN_LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
       </label>
-      <p className="hint">同时用于快速翻译的目标语言。</p>
+      <p className="hint">同时用于 AI 语境详解与快速翻译的目标语言。</p>
 
       <div className="row">
         <button className="btn" onClick={() => void onTest()} disabled={test.kind === 'busy'}>
@@ -264,7 +295,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
 
       {test.kind === 'ok' && (
         <div className="result">
-          <p className="ok">连接正常。以下是当前模型对示例句的实际输出效果：</p>
+          <p className="ok">连接成功。以下是当前模型对示例语境的实际解析效果：</p>
           <SamplePreview entry={test.sample} />
         </div>
       )}
@@ -272,16 +303,16 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
       {test.kind === 'no-structured' && (
         <div className="result">
           <p className="warn">
-            接口已连通，但当前模型无法返回结构化数据（JSON 格式），AI 语境释义将无法正常工作。建议更换能力更强或支持结构化输出的模型。
+            接口已连通，但当前模型未能返回结构化 JSON 数据，AI 语境详解将无法正常工作。请更换支持结构化输出的模型。
           </p>
           {test.reply && (
             <>
-              <p className="hint">它对普通提问的回答是正常的：</p>
+              <p className="hint">模型对普通对话的回复：</p>
               <div className="reply">{test.reply}</div>
             </>
           )}
           <details>
-            <summary>原始报错</summary>
+            <summary>查看详细错误原因</summary>
             <div className="reply reply-quiet">{test.detail}</div>
           </details>
         </div>

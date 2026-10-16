@@ -15,13 +15,13 @@ import { MtSection } from './sections/MtSection'
 import { UxSection } from './sections/UxSection'
 
 const NAV_SECTIONS = [
-  { id: 'sec-ai', label: 'AI 接口', icon: Sparkles },
-  { id: 'sec-mt', label: '快速翻译', icon: Zap },
-  { id: 'sec-dict', label: '离线词典', icon: BookOpen },
-  { id: 'sec-anki', label: 'Anki 单词本', icon: Layers },
   { id: 'sec-ux', label: '划词与朗读', icon: Volume2 },
-  { id: 'sec-data', label: '数据与维护', icon: Database },
-  { id: 'sec-about', label: '关于插件', icon: Info },
+  { id: 'sec-dict', label: '离线词典', icon: BookOpen },
+  { id: 'sec-mt', label: '快速翻译', icon: Zap },
+  { id: 'sec-ai', label: 'AI 语境详解', icon: Sparkles },
+  { id: 'sec-data', label: '数据与单词本', icon: Database },
+  { id: 'sec-anki', label: '外部拓展联动', icon: Layers },
+  { id: 'sec-about', label: '关于与致谢', icon: Info },
 ] as const
 
 /**
@@ -100,6 +100,7 @@ export default function App() {
 
   const aiReady = isAiConfigured(s)
   const dictReady = dictMeta?.status === 'ready' && dictMeta.entryCount > 0
+  const ankiEnabled = s.anki.enabled !== false
 
   if (!loaded) return <div className="settings-loading" role={loadError ? 'alert' : 'status'}>
     <strong>{loadError ? '无法读取设置' : '正在加载设置…'}</strong>
@@ -123,7 +124,7 @@ export default function App() {
             <span className="brand-reading">/wɜːd ˈkætʃə(r)/</span>
             <span className="brand-pos">n.</span>
           </div>
-          <p className="brand-def">网页查词与语境释义，随手存入 Anki。</p>
+          <p className="brand-def">网页划词、语境解析与生词本复习工具。</p>
         </div>
 
         <nav aria-label="设置分区">
@@ -151,10 +152,6 @@ export default function App() {
           </div>
           <div className="side-status-list">
             <div className="status-row">
-              <span>AI 接口</span>
-              <StatusChip ok={aiReady} okText="已配置" badText="未配置" />
-            </div>
-            <div className="status-row">
               <span>离线词库</span>
               <StatusChip
                 ok={dictReady}
@@ -163,10 +160,18 @@ export default function App() {
               />
             </div>
             <div className="status-row">
-              <span>Anki 单词本</span>
-              {ankiAlive === null
-                ? <span className="chip">检测中</span>
-                : <StatusChip ok={ankiAlive} okText="已连接" badText="未连接" />}
+              <span>AI 语境详解</span>
+              <StatusChip ok={aiReady} okText="已配置" badText="未配置" />
+            </div>
+            <div className="status-row">
+              <span>Anki 拓展</span>
+              {!ankiEnabled
+                ? <span className="chip">已关闭</span>
+                : ankiAlive === null
+                  ? <span className="chip">检测中</span>
+                  : ankiAlive
+                    ? <span className="chip chip-ok">已连接</span>
+                    : <span className="chip">按需启动</span>}
             </div>
           </div>
 
@@ -192,15 +197,15 @@ export default function App() {
 
       {/* ── 主内容 ── */}
       <main>
-        <AiSection {...sectionProps} />
-        <MtSection {...sectionProps} />
-        <DictSection {...sectionProps} />
-        <AnkiSection {...sectionProps} onAliveChange={setAnkiAlive} />
         <UxSection {...sectionProps} />
+        <DictSection {...sectionProps} />
+        <MtSection {...sectionProps} />
+        <AiSection {...sectionProps} />
         <DataSection {...sectionProps} />
+        <AnkiSection {...sectionProps} onAliveChange={setAnkiAlive} />
         <AboutSection {...sectionProps} />
 
-        <p className="foot-note">修改会自动保存；显示「已自动保存」后生效。</p>
+        <p className="foot-note">所有设置修改后立即自动保存并生效。</p>
       </main>
     </div>
   )

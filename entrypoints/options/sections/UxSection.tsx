@@ -1,18 +1,65 @@
-import { Volume2 } from 'lucide-react'
+import { Plus, Volume2, X } from 'lucide-react'
+import { useState } from 'react'
+import { isTtsSupported, speak } from '@/lib/tts'
 import type { Settings } from '@/lib/types'
 import { Section } from '../components/Section'
 import { Segmented, Switch } from '../components/controls'
 import { LANGUAGE_PRESETS } from '../presets'
 import type { SectionProps } from './types'
 
+const COMMON_BLACKLIST_DOMAINS = [
+  'github.com',
+  'docs.google.com',
+  'notion.so',
+  'feishu.cn',
+  'overleaf.com',
+]
+
 export function UxSection({ s, onChange }: SectionProps) {
+  const [domainInput, setDomainInput] = useState('')
+
   const patchTts = (part: Partial<Settings['tts']>) =>
     onChange({ ...s, tts: { ...s.tts, ...part } })
 
   const currentLang = LANGUAGE_PRESETS.find(l => l.ttsLang === s.tts.lang)
+  const blacklist = s.blacklist || []
+
+  const addDomains = (raw: string) => {
+    const items = raw
+      .split(/[\s,;\n]+/)
+      .map(x => x.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+      .filter(Boolean)
+    if (items.length === 0) return
+    const next = Array.from(new Set([...blacklist, ...items]))
+    onChange({ ...s, blacklist: next })
+    setDomainInput('')
+  }
+
+  const removeDomain = (domain: string) => {
+    onChange({ ...s, blacklist: blacklist.filter(d => d !== domain) })
+  }
+
+  const onPreviewTts = () => {
+    if (!isTtsSupported()) return
+    const sample = s.tts.lang.startsWith('ja')
+      ? '言葉を文脈の中で覚える。'
+      : s.tts.lang.startsWith('ko')
+        ? '문맥 속에서 단어를 기억합니다.'
+        : 'Capture words in their natural context.'
+    speak(sample, {
+      lang: s.tts.lang,
+      rate: s.tts.rate,
+      autoDetect: false,
+    })
+  }
 
   return (
-    <Section id="sec-ux" index={4} title="划词与朗读">
+    <Section
+      id="sec-ux"
+      index={0}
+      title="划词与朗读"
+      intro="设置网页划选文本时的触发行为、防误触规则与发音语速。"
+    >
       <div className="field">
         <span>触发方式</span>
         <Segmented
@@ -26,7 +73,7 @@ export function UxSection({ s, onChange }: SectionProps) {
         />
       </div>
       <p className="hint">
-        操作胶囊让你选择快译或 AI；直接快译优先查词典；直接 AI 会在每次划选时请求模型。
+        「操作胶囊」可按需选择快译或 AI 详解；「直接快速翻译」优先查询本地离线词典；「直接 AI 释义」每次划选直接生成语境解析。
       </p>
 
       <div className="field">
@@ -43,7 +90,7 @@ export function UxSection({ s, onChange }: SectionProps) {
         />
       </div>
       <p className="hint">
-        「直接划选」选中文本即触发；设置辅助键后，需在划选的同时按住该键才会唤起，防止日常阅读复制时误触。
+        设置辅助键后，需在划选文本的同时按住该键才会唤起查词面板，防止日常阅读复制时误触。
       </p>
 
       <div className="field">
@@ -54,41 +101,83 @@ export function UxSection({ s, onChange }: SectionProps) {
             onChange={doubleClickLookup => onChange({ ...s, doubleClickLookup })}
           />
           <span className="field-inline-label">
-            双击单词直接展开快速翻译
+            双击单词时跳过操作胶囊，直接展开快速翻译
           </span>
         </div>
       </div>
+
+      <div className="field field-top">
+        <span>禁用网站</span>
+        <div className="domain-manager">
+          {blacklist.length > 0 && (
+            <div className="domain-chips">
+              {blacklist.map(domain => (
+                <span key={domain} className="domain-chip">
+                  <span>{domain}</span>
+                  <button
+                    type="button"
+                    className="domain-chip-remove"
+                    title={`移除 ${domain}`}
+                    aria-label={`移除禁用域名 ${domain}`}
+                    onClick={() => removeDomain(domain)}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="domain-input-row">
+            <input
+              type="text"
+              value={domainInput}
+              placeholder="输入域名（如 github.com），回车添加"
+              onChange={e => setDomainInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  addDomains(domainInput)
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-icon"
+              disabled={!domainInput.trim()}
+              onClick={() => addDomains(domainInput)}
+            >
+              <Plus size={14} />
+              <span>添加</span>
+            </button>
+          </div>
+
+          <div className="domain-presets">
+            <span className="domain-presets-label">常用排除：</span>
+            {COMMON_BLACKLIST_DOMAINS.filter(d => !blacklist.includes(d)).map(domain => (
+              <button
+                key={domain}
+                type="button"
+                className="provider-chip"
+                onClick={() => addDomains(domain)}
+              >
+                + {domain}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
       <p className="hint">
-        开启后，双击网页中的单词跳过操作胶囊，直接展开离线词典或在线机翻。
+        在以上域名下不触发划词弹窗，避免干扰代码编写或在线文档协作。
       </p>
 
       <label className="field">
-        <span>禁用域名</span>
-        <textarea
-          rows={3}
-          placeholder="每行一个域名，例如 github.com 或 docs.google.com"
-          value={(s.blacklist || []).join('\n')}
-          onChange={e => onChange({
-            ...s,
-            blacklist: e.target.value
-              .split('\n')
-              .map(x => x.trim().toLowerCase())
-              .filter(Boolean),
-          })}
-        />
-      </label>
-      <p className="hint">
-        在这些网站上完全禁用划词弹窗，避免干扰代码编辑或在线文档协作。
-      </p>
-
-      <label className="field">
-        <span>学习语言</span>
+        <span>默认学习语言</span>
         <select
           value={currentLang?.label ?? ''}
           onChange={(e) => {
             const l = LANGUAGE_PRESETS.find(x => x.label === e.target.value)
             if (!l) return
-            // 两处发音一起改：插件内试听用 BCP-47，Anki 的 {{tts}} 用下划线格式
             onChange({
               ...s,
               tts: { ...s.tts, lang: l.ttsLang },
@@ -100,7 +189,6 @@ export function UxSection({ s, onChange }: SectionProps) {
           {LANGUAGE_PRESETS.map(l => <option key={l.label} value={l.label}>{l.label}</option>)}
         </select>
       </label>
-      <p className="hint">用于查词试听和 Anki 卡片的默认朗读语言。</p>
 
       <div className="field">
         <span>语种识别</span>
@@ -110,24 +198,23 @@ export function UxSection({ s, onChange }: SectionProps) {
             onChange={autoDetect => patchTts({ autoDetect })}
           />
           <span className="field-inline-label">
-            划词试听时智能识别语种（如日语、韩语、德语等）
+            朗读时自动识别文本语种（如日语、韩语、法语、德语）
           </span>
         </div>
       </div>
-      <p className="hint">开启后若划选文本明显属于其它语种，自动使用对应语种音色朗读，避免用英语发音混读。</p>
 
       <div className="field">
-        <span>试听按钮</span>
+        <span>朗读按钮</span>
         <div className="field-inline">
           <Switch checked={s.tts.enabled} onChange={enabled => patchTts({ enabled })} />
           <span className="field-inline-label">
-            在面板中显示（<Volume2 size={13} className="inline-icon" />）
+            在查词面板中显示朗读按钮（<Volume2 size={13} className="inline-icon" />，快捷键 <code>P</code>）
           </span>
         </div>
       </div>
 
-      <label className="field">
-        <span>语速</span>
+      <div className="field">
+        <span>朗读语速</span>
         <input
           type="range"
           min={0.5}
@@ -137,7 +224,18 @@ export function UxSection({ s, onChange }: SectionProps) {
           onChange={e => patchTts({ rate: Number(e.target.value) })}
         />
         <span className="value">{s.tts.rate.toFixed(1)}×</span>
-      </label>
+        {isTtsSupported() && (
+          <button
+            type="button"
+            className="btn btn-icon"
+            onClick={onPreviewTts}
+            title="试听当前语言和语速"
+          >
+            <Volume2 size={14} />
+            <span>试听发音</span>
+          </button>
+        )}
+      </div>
     </Section>
   )
 }

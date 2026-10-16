@@ -70,6 +70,7 @@ export function normalizeSettings(raw: unknown): Settings {
     ...section('anki'),
     ...(desktopAnki
       ? {
+          ...(typeof desktopAnki.Enabled === 'boolean' ? { enabled: desktopAnki.Enabled } : {}),
           url: desktopAnki.Url ?? DEFAULT_SETTINGS.anki.url,
           deckName: desktopAnki.DeckName ?? DEFAULT_SETTINGS.anki.deckName,
           noteTypeName: desktopAnki.NoteTypeName ?? DEFAULT_SETTINGS.anki.noteTypeName,

@@ -62,8 +62,8 @@ async function invoke<T>(
     throw new AnkiError(
       isTimeout(err)
         // 本地请求正常是毫秒级，超时几乎只有一个原因：Anki 被模态框卡住了
-        ? `Anki 超过 ${TIMEOUT.anki / 1000} 秒没有响应。切到 Anki 窗口看看是不是有对话框等着确认。`
-        : '连不上 Anki。请确认 Anki 桌面版正在运行，且已安装 AnkiConnect 插件。',
+        ? `Anki 超过 ${TIMEOUT.anki / 1000} 秒未响应。请切换到 Anki 窗口检查是否有待确认的对话框。`
+        : '无法连接 Anki。请确认 Anki 桌面版正在运行，并已安装 AnkiConnect 插件。',
       'unreachable',
     )
   }
@@ -170,7 +170,7 @@ function cardTemplates(ttsLang: string) {
 <div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">{{Reading}}</span>{{/Reading}}</div>
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
 <div class="wc-def">{{Definition}}</div>
-{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
+{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
 {{#SentencePlain}}<div class="wc-full">{{SentencePlain}}</div>{{/SentencePlain}}
 {{#SentenceTranslation}}<div class="wc-trans">{{SentenceTranslation}}</div>{{/SentenceTranslation}}
 {{#Source}}<div class="wc-source">{{Source}}</div>{{/Source}}
@@ -180,12 +180,16 @@ function cardTemplates(ttsLang: string) {
       Name: 'Recognition' as const,
       Front: `
 <div class="wc-word">{{Word}}</div>
+{{#PartOfSpeech}}<div class="wc-pos">{{PartOfSpeech}}</div>{{/PartOfSpeech}}
+{{#Sentence}}<div class="wc-context-hint">{{Sentence}}</div>{{/Sentence}}
 `.trim(),
       Back: `
 {{FrontSide}}
 <hr id=answer>
 <div class="wc-def">{{Definition}}</div>
-{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
+{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
+{{#SentencePlain}}<div class="wc-full">{{SentencePlain}}</div>{{/SentencePlain}}
+{{#SentenceTranslation}}<div class="wc-trans">{{SentenceTranslation}}</div>{{/SentenceTranslation}}
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
 `.trim(),
     },
@@ -193,20 +197,24 @@ function cardTemplates(ttsLang: string) {
       Name: 'Production' as const,
       Front: `
 <div class="wc-def">{{Definition}}</div>
+{{#PartOfSpeech}}<div class="wc-pos">{{PartOfSpeech}}</div>{{/PartOfSpeech}}
 `.trim(),
       Back: `
 {{FrontSide}}
 <hr id=answer>
 <div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">{{Reading}}</span>{{/Reading}}</div>
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
-{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
+{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
+{{#SentencePlain}}<div class="wc-full">{{SentencePlain}}</div>{{/SentencePlain}}
+{{#SentenceTranslation}}<div class="wc-trans">{{SentenceTranslation}}</div>{{/SentenceTranslation}}
 `.trim(),
     },
     {
       Name: 'Listening' as const,
       Front: `
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
-<div class="wc-listen-hint">听音</div>
+<div class="wc-listen-hint">听音辨词</div>
+{{#Sentence}}<div class="wc-context-hint">{{Sentence}}</div>{{/Sentence}}
 `.trim(),
       Back: `
 {{FrontSide}}
@@ -214,7 +222,9 @@ function cardTemplates(ttsLang: string) {
 <div class="wc-word">{{Word}}{{#Reading}} <span class="wc-reading">{{Reading}}</span>{{/Reading}}</div>
 <div class="wc-tts">{{tts ${ttsLang}:Word}}</div>
 <div class="wc-def">{{Definition}}</div>
-{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">💡 记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
+{{#MemoryHook}}<div class="wc-hook"><span class="wc-hook-label">记忆线索</span> {{MemoryHook}}</div>{{/MemoryHook}}
+{{#SentencePlain}}<div class="wc-full">{{SentencePlain}}</div>{{/SentencePlain}}
+{{#SentenceTranslation}}<div class="wc-trans">{{SentenceTranslation}}</div>{{/SentenceTranslation}}
 `.trim(),
     },
   ]
@@ -239,6 +249,15 @@ const MODEL_CSS = `
   font-size: 24px;
   margin-bottom: 16px;
   font-weight: 500;
+}
+
+.wc-context-hint {
+  margin-top: 14px;
+  padding-left: 12px;
+  border-left: 2px solid #e8e3d9;
+  font-size: 16px;
+  color: #7c7569;
+  line-height: 1.65;
 }
 
 .wc-blank {
@@ -324,6 +343,16 @@ const MODEL_CSS = `
   line-height: 1.6;
 }
 
+.wc-note {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(14, 111, 99, 0.08);
+  color: #0e6f63;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
 .wc-source {
   margin-top: 16px;
   font-size: 13px;
@@ -358,6 +387,12 @@ hr#answer {
   color: #4fd1bb;
 }
 
+.nightMode .wc-context-hint,
+.night_mode .wc-context-hint {
+  border-left-color: #3a362e;
+  color: #a89f90;
+}
+
 .nightMode .wc-blank,
 .night_mode .wc-blank {
   color: #e8a94e;
@@ -381,6 +416,12 @@ hr#answer {
 .night_mode .wc-full {
   color: #a89f90;
   border-left-color: #4fd1bb;
+}
+
+.nightMode .wc-note,
+.night_mode .wc-note {
+  background: rgba(79, 209, 187, 0.12);
+  color: #4fd1bb;
 }
 
 .nightMode .wc-listen-hint,
@@ -493,6 +534,16 @@ function escapeHtml(text: string): string {
 export function buildNoteFields(card: CapturedCard, s: Settings): Record<string, string> {
   // 挖空在未转义的原文上定位，由 buildClozeSentence 内部分段转义
   const cloze = buildClozeSentence(card.sentence, card.selection, card.sentenceOffset ?? -1)
+  const extraParts: string[] = []
+  if (card.entry.keyExplanation) {
+    extraParts.push(`<div class="wc-trans">语境解析：${escapeHtml(card.entry.keyExplanation)}</div>`)
+  }
+  if (card.entry.example) {
+    extraParts.push(`<div class="wc-trans">拓展例句：${escapeHtml(card.entry.example)}</div>`)
+  }
+  if (card.edits?.note) {
+    extraParts.push(`<div class="wc-note">个人笔记：${escapeHtml(card.edits.note)}</div>`)
+  }
 
   return {
     Word: escapeHtml(card.entry.expression || card.entry.word),
@@ -502,74 +553,10 @@ export function buildNoteFields(card: CapturedCard, s: Settings): Record<string,
     MemoryHook: escapeHtml(card.entry.memoryHook || ''),
     Sentence: s.anki.clozeContext ? cloze : escapeHtml(card.sentence),
     SentencePlain: escapeHtml(card.sentence),
-    SentenceTranslation: escapeHtml(card.entry.contextTranslation),
+    SentenceTranslation: escapeHtml(card.entry.contextTranslation) + extraParts.join(''),
     Source: card.pageUrl
       ? `<a href="${escapeHtml(card.pageUrl)}">${escapeHtml(card.pageTitle || card.pageUrl)}</a>`
       : '',
-  }
-}
-
-interface AnkiNoteInfo {
-  noteId: number
-  fields?: Record<string, { value?: string }>
-}
-
-function appendField(existing: string | undefined, incoming: string, separator = '<br><br>'): string {
-  const cur = (existing ?? '').trim()
-  const next = incoming.trim()
-  if (!next) return cur
-  if (!cur) return next
-  if (cur.includes(next)) return cur
-  return `${cur}${separator}${next}`
-}
-
-/**
- * 当词条已在牌组中且遇到新语境原句时，把新原句、译文与来源追加到现有笔记中。
- * 若没有新语境或无法读取现有笔记，则返回 null 由调用方抛出重复提示。
- */
-async function tryAppendContextToExistingNote(card: CapturedCard, s: Settings): Promise<number | null> {
-  const incomingSentence = card.sentence.trim()
-  if (!incomingSentence || incomingSentence.toLowerCase() === card.entry.word.trim().toLowerCase()) {
-    return null
-  }
-
-  try {
-    const existingIds = await findExisting(card.entry.word, s)
-    if (!Array.isArray(existingIds) || existingIds.length === 0) return null
-
-    const notes = await invoke<AnkiNoteInfo[]>(s.anki.url, 'notesInfo', { notes: [existingIds[0]] })
-    const note = Array.isArray(notes) ? notes[0] : null
-    if (!note || !note.fields) return null
-
-    const newFields = buildNoteFields(card, s)
-    const oldPlain = (note.fields.SentencePlain?.value ?? '').trim()
-    if (oldPlain.includes(newFields.SentencePlain)) {
-      return null
-    }
-
-    const updatedFields: Record<string, string> = {
-      Sentence: appendField(note.fields.Sentence?.value, newFields.Sentence),
-      SentencePlain: appendField(oldPlain, newFields.SentencePlain),
-      SentenceTranslation: appendField(note.fields.SentenceTranslation?.value, newFields.SentenceTranslation),
-      Source: appendField(note.fields.Source?.value, newFields.Source, ' · '),
-    }
-
-    if (!note.fields.MemoryHook?.value && newFields.MemoryHook) {
-      updatedFields.MemoryHook = newFields.MemoryHook
-    }
-    if (!note.fields.Reading?.value && newFields.Reading) {
-      updatedFields.Reading = newFields.Reading
-    }
-
-    await invoke(s.anki.url, 'updateNoteFields', {
-      note: {
-        id: note.noteId,
-        fields: updatedFields,
-      },
-    })
-    return note.noteId
-  } catch {
-    return null
   }
 }
 
@@ -594,7 +581,7 @@ export async function addNote(card: CapturedCard, s: Settings): Promise<number> 
         fields: buildNoteFields(card, s),
         tags: tag ? ['word-catcher', tag] : ['word-catcher'],
         options: {
-          // 靠首个字段（Word）查重，同一个词第二次划到时 Anki 会拒绝，避免刷屏
+          // 语境记录按标签更新；不同语境允许同词分别建卡，旧记录仍按词查重
           allowDuplicate: Boolean(tag),
           duplicateScope: 'deck',
         },
@@ -611,11 +598,7 @@ export async function addNote(card: CapturedCard, s: Settings): Promise<number> 
     return noteId
   } catch (err) {
     if (err instanceof AnkiError && /duplicate/i.test(err.message)) {
-      const mergedNoteId = await tryAppendContextToExistingNote(card, s)
-      if (mergedNoteId !== null) {
-        return mergedNoteId
-      }
-      throw new AnkiError(`「${card.entry.word}」已经在牌组里了，不用重复添加。`, 'api')
+      throw new AnkiError(`「${card.entry.word}」已在当前牌组中，无需重复添加。`, 'api')
     }
     verifiedSchemaKey = null
     throw err

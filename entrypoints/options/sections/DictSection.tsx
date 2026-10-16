@@ -1,4 +1,4 @@
-import { BookOpen, Check, Download, RefreshCw, Trash2, Upload, X } from 'lucide-react'
+import { Download, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { sendMessage } from '@/lib/messaging'
 import { type ImportProgress, importLocalDictFile, startDictImport } from '@/lib/open-dict/importer'
@@ -39,14 +39,14 @@ export function DictSection({ s, onChange }: SectionProps) {
     setProgress({
       percent: 0,
       processedCount: 0,
-      statusText: '准备开始下载...',
+      statusText: '正在准备下载…',
     })
 
     const cancel = startDictImport(downloadUrl, {
       onProgress: (p) => {
         setProgress(p)
       },
-      onDone: (count) => {
+      onDone: () => {
         setProgress(null)
         abortRef.current = null
         refreshMeta()
@@ -76,7 +76,7 @@ export function DictSection({ s, onChange }: SectionProps) {
     setProgress({
       percent: 0,
       processedCount: 0,
-      statusText: '准备解析本地文件...',
+      statusText: '正在解析本地文件…',
     })
 
     const controller = new AbortController()
@@ -86,7 +86,7 @@ export function DictSection({ s, onChange }: SectionProps) {
       onProgress: (p) => {
         setProgress(p)
       },
-      onDone: (count) => {
+      onDone: () => {
         setProgress(null)
         abortRef.current = null
         refreshMeta()
@@ -119,70 +119,63 @@ export function DictSection({ s, onChange }: SectionProps) {
   return (
     <Section
       id="sec-dict"
-      index={2}
+      index={1}
       title="离线词典"
-      intro={<>安装 Open Dictionary 词库后，可在本地离线查词。</>}
+      intro="安装 Open Dictionary 本地词库后，查询英文单词无需联网即可毫秒级响应。"
     >
       <div className="field">
         <span>启用离线词库</span>
-        <Switch
-          checked={Boolean(s.dict?.enabled ?? true)}
-          onChange={enabled => onChange({ ...s, dict: { ...s.dict, downloadUrl, enabled } })}
-        />
+        <div className="field-inline">
+          <Switch
+            checked={Boolean(s.dict?.enabled ?? true)}
+            onChange={enabled => onChange({ ...s, dict: { ...s.dict, downloadUrl, enabled } })}
+          />
+          <span className="field-inline-label">单词优先查询本地词库，未收录词条与长句自动切换在线翻译</span>
+        </div>
       </div>
-      <p className="hint">单个英文单词优先查本地词典；未收录的词和长句使用在线翻译。</p>
 
-      <div className="field" style={{ marginTop: 16 }}>
+      <div className="field">
         <span>词库状态</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="field-inline">
           <StatusChip
             ok={isReady}
-            okText={`已就绪 (${meta.entryCount.toLocaleString()} 词)`}
-            badText={isDownloading ? '正在安装...' : '未安装'}
+            okText={`已就绪（${meta.entryCount.toLocaleString()} 词）`}
+            badText={isDownloading ? '正在安装…' : '未安装'}
           />
         </div>
       </div>
 
-      {/* ── 下载/导入进度条 ── */}
       {isDownloading && progress && (
-        <div style={{ marginTop: 12, padding: 14, background: 'var(--teal-wash)', borderRadius: 'var(--r-md)', border: '1px solid var(--hairline)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 550, color: 'var(--ink)' }}>
-            <span>{progress.statusText}</span>
-            <span>{progress.percent}%</span>
-          </div>
-          <div style={{ marginTop: 8, height: 6, width: '100%', background: 'var(--hairline)', borderRadius: 3, overflow: 'hidden' }}>
-            <div
-              style={{
-                height: '100%',
-                width: `${progress.percent}%`,
-                background: 'var(--teal)',
-                transition: 'width 0.2s ease',
-              }}
-            />
-          </div>
-          <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={onCancelDownload}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            >
-              <X size={13} />
-              <span>取消操作</span>
-            </button>
+        <div className="result">
+          <div className="dict-progress-card">
+            <div className="dict-progress-head">
+              <span>{progress.statusText}</span>
+              <span>{progress.percent}%</span>
+            </div>
+            <div className="dict-progress-track">
+              <div className="dict-progress-fill" style={{ width: `${progress.percent}%` }} />
+            </div>
+            <div className="dict-progress-foot">
+              <button
+                type="button"
+                className="btn btn-icon"
+                onClick={onCancelDownload}
+              >
+                <X size={13} />
+                <span>取消安装</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── 错误提示 ── */}
       {(errorMsg || (meta.status === 'error' && meta.errorMessage)) && (
-        <div className="err" style={{ marginTop: 12 }}>
-          {errorMsg || meta.errorMessage}
+        <div className="result">
+          <p className="err">{errorMsg || meta.errorMessage}</p>
         </div>
       )}
 
-      {/* ── 词库操作按钮 ── */}
-      <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div className="row dict-actions-row">
         <input
           ref={fileInputRef}
           type="file"
@@ -195,22 +188,20 @@ export function DictSection({ s, onChange }: SectionProps) {
           <>
             <button
               type="button"
-              className={`btn ${isReady ? 'btn-ghost' : 'btn-primary'}`}
+              className="btn btn-icon"
               onClick={onStartDownload}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               {isReady ? <RefreshCw size={14} /> : <Download size={14} />}
-              <span>{isReady ? '从网络更新词库' : '一键从网络下载安装 (约 93MB)'}</span>
+              <span>{isReady ? '在线更新词库' : '在线下载安装（约 93 MB）'}</span>
             </button>
 
             <button
               type="button"
-              className="btn btn-ghost"
+              className="btn btn-icon"
               onClick={() => fileInputRef.current?.click()}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <Upload size={14} />
-              <span>导入词库文件</span>
+              <span>从本地文件导入</span>
             </button>
           </>
         )}
@@ -218,18 +209,19 @@ export function DictSection({ s, onChange }: SectionProps) {
         {isReady && !isDownloading && !showConfirmClear && (
           <button
             type="button"
-            className="btn btn-ghost"
+            className="btn btn-icon btn-danger"
             onClick={() => setShowConfirmClear(true)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--ink-faint)' }}
           >
             <Trash2 size={14} />
             <span>清空离线词库</span>
           </button>
         )}
+      </div>
 
-        {showConfirmClear && (
-          <div className="dict-confirm-box" style={{ width: '100%' }}>
-            <span className="dict-confirm-msg">确定要清空本地离线词库吗？清空后划词将自动回退到在线机翻。</span>
+      {showConfirmClear && (
+        <div className="result">
+          <div className="dict-confirm-box">
+            <span className="dict-confirm-msg">确定清空本地离线词库？清空后查词将自动使用在线翻译，已收藏的单词本不受影响。</span>
             <div className="dict-confirm-actions">
               <button
                 type="button"
@@ -243,43 +235,44 @@ export function DictSection({ s, onChange }: SectionProps) {
                   refreshMeta()
                 }}
               >
-                确定清空
+                确认清空
               </button>
               <button
                 type="button"
-                className="btn btn-ghost btn-sm"
+                className="btn"
                 onClick={() => setShowConfirmClear(false)}
               >
                 取消
               </button>
             </div>
           </div>
-        )}
-      </div>
-
-      <div className="field" style={{ marginTop: 20 }}>
-        <span>数据源地址</span>
-        <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-          <input
-            type="text"
-            className="input"
-            value={downloadUrl}
-            disabled={isDownloading}
-            onChange={e => onChange({ ...s, dict: { ...s.dict, enabled: s.dict?.enabled ?? true, downloadUrl: e.target.value } })}
-            style={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
-          />
-          {downloadUrl !== DEFAULT_SETTINGS.dict.downloadUrl && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => onChange({ ...s, dict: { ...s.dict, enabled: s.dict?.enabled ?? true, downloadUrl: DEFAULT_SETTINGS.dict.downloadUrl } })}
-            >
-              恢复默认
-            </button>
-          )}
         </div>
-      </div>
-      <p className="hint">基于 Open Dictionary 官方发布的开源词库数据包（gzip 压缩）。</p>
+      )}
+
+      <details className="adv-details">
+        <summary>高级选项：自定义词库下载源</summary>
+        <div className="adv-details-body">
+          <label className="field">
+            <span>数据源地址</span>
+            <input
+              type="text"
+              value={downloadUrl}
+              disabled={isDownloading}
+              onChange={e => onChange({ ...s, dict: { ...s.dict, enabled: s.dict?.enabled ?? true, downloadUrl: e.target.value } })}
+            />
+            {downloadUrl !== DEFAULT_SETTINGS.dict.downloadUrl && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => onChange({ ...s, dict: { ...s.dict, enabled: s.dict?.enabled ?? true, downloadUrl: DEFAULT_SETTINGS.dict.downloadUrl } })}
+              >
+                恢复默认
+              </button>
+            )}
+          </label>
+          <p className="hint">默认使用 Open Dictionary 官方发布的开源词库数据包（gzip 压缩）。</p>
+        </div>
+      </details>
     </Section>
   )
 }

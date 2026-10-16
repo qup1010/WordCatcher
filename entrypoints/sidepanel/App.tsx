@@ -6,8 +6,12 @@ import { resolveOffset } from '@/lib/anki'
 import type { QuickDictResult } from '@/lib/open-dict/types'
 import {
   AlertCircle,
+  BookOpen,
   Check,
+  Copy,
+  ExternalLink,
   LoaderCircle,
+  Pencil,
   Search,
   Settings2,
   Sparkles,
@@ -48,10 +52,14 @@ export default function App() {
   const [dictionary, setDictionary] = useState<QuickDictResult | null>(null)
   const [entry, setEntry] = useState<WordEntry | null>(null)
   const [historyList, setHistoryList] = useState<HistoryItem[]>([])
+  const [historyFilter, setHistoryFilter] = useState('')
+  const [libraryCount, setLibraryCount] = useState(0)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'queued'>('idle')
   const [edits, setEdits] = useState<LearningEdits>({})
   const [savedContext, setSavedContext] = useState<string | undefined>()
   const [currentSentence, setCurrentSentence] = useState<string>('')
+  const [editingSentence, setEditingSentence] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [sourceMeta, setSourceMeta] = useState<SourceContextMeta | null>(null)
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -68,6 +76,13 @@ export default function App() {
       setHistoryError(null)
     } else {
       setHistoryError(res.error)
+    }
+  }, [])
+
+  const refreshLibraryCount = useCallback(async () => {
+    const res = await sendMessage({ type: 'library-list' })
+    if (res?.ok && Array.isArray(res.data)) {
+      setLibraryCount(res.data.length)
     }
   }, [])
 
@@ -89,14 +104,15 @@ export default function App() {
     setTab('current')
     setEntry(null)
     setCurrentSentence(sentence ?? '')
+    setEditingSentence(false)
     setEdits({})
     setSavedContext(undefined)
     setSourceMeta({
-          selection: meta?.selection || w,
-          sentenceOffset: meta?.sentenceOffset ?? -1,
-          pageUrl: meta?.pageUrl || '',
-          pageTitle: meta?.pageTitle || '',
-        })
+      selection: meta?.selection || w,
+      sentenceOffset: meta?.sentenceOffset ?? -1,
+      pageUrl: meta?.pageUrl || '',
+      pageTitle: meta?.pageTitle || '',
+    })
 
     const res = await sendMessage({
       type: 'quick-translate',
@@ -151,6 +167,34 @@ export default function App() {
     void getSettings().then(setS)
     const stopWatch = watchSettings(setS)
     void refreshHistory()
+    void refreshLibraryCount()
+
+    // 若用户刚从网页查词卡片点击「在侧边栏中打开」，自动承接刚才正在查看的词条与语境
+    void sendMessage({ type: 'sidepanel-get-active' }).then((res) => {
+      if (!res?.ok || !res.data || lookupSequence.current > 0) return
+      const snap = res.data
+      if (snap.entry) {
+        setEntry(snap.entry)
+        setDictionary(snap.dict ?? null)
+        setQuery(snap.entry.word || snap.selection || snap.word)
+        setCurrentSentence(snap.sentence || '')
+        setSourceMeta({
+          selection: snap.selection || snap.word,
+          sentenceOffset: snap.sentenceOffset ?? -1,
+          pageUrl: snap.pageUrl || '',
+          pageTitle: snap.pageTitle || '',
+        })
+      } else if (snap.word) {
+        setQuery(snap.word)
+        setCurrentSentence(snap.sentence || '')
+        void doLookup(snap.word, snap.sentence || undefined, {
+          selection: snap.selection || snap.word,
+          sentenceOffset: snap.sentenceOffset ?? -1,
+          pageUrl: snap.pageUrl || '',
+          pageTitle: snap.pageTitle || '',
+        })
+      }
+    })
 
     const onMessage = (msg: unknown) => {
       const m = msg as {
@@ -189,6 +233,7 @@ export default function App() {
         setSaveError(null)
         setQuery(m.payload.entry.word || m.payload.selection || '')
         setCurrentSentence(m.payload.sentence || '')
+        setEditingSentence(false)
         setSourceMeta({
           selection: m.payload.selection || m.payload.entry.word,
           sentenceOffset: m.payload.sentenceOffset ?? -1,
@@ -200,6 +245,7 @@ export default function App() {
       } else if (m?.type === 'sidepanel-sync-saved' && m.payload?.word) {
         setSaveState(m.payload.queued ? 'queued' : 'saved')
         void refreshHistory()
+        void refreshLibraryCount()
       }
     }
     browser.runtime.onMessage.addListener(onMessage)
@@ -221,7 +267,7 @@ export default function App() {
       browser.runtime.onMessage.removeListener(onMessage)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [refreshHistory, doLookup])
+  }, [refreshHistory, refreshLibraryCount, doLookup])
 
   const doAiLookup = () => {
     const w = (sourceMeta?.selection || entry?.word || query).trim()
@@ -234,12 +280,15 @@ export default function App() {
     setSaveState('idle')
     setDictionary(null)
 
+    const sentenceForAi = currentSentence.trim() || w
+    const offsetForAi = resolveOffset(sentenceForAi, w, sourceMeta?.sentenceOffset ?? -1)
+
     cancelStream.current = openEntryStream(
       {
         selection: w,
         bypassCache: true,
-        sentence: currentSentence || w,
-        sentenceOffset: sourceMeta?.sentenceOffset ?? -1,
+        sentence: sentenceForAi,
+        sentenceOffset: offsetForAi,
         pageUrl: sourceMeta?.pageUrl,
         pageTitle: sourceMeta?.pageTitle,
       },
@@ -281,8 +330,8 @@ export default function App() {
     setSaveError(null)
     setSaveState('saving')
     const selectionText = sourceMeta?.selection || entry.word
-    const sentenceText = currentSentence || selectionText
-    const offset = sourceMeta ? sourceMeta.sentenceOffset : resolveOffset(sentenceText, selectionText, -1)
+    const sentenceText = currentSentence.trim() || selectionText
+    const offset = resolveOffset(sentenceText, selectionText, sourceMeta?.sentenceOffset ?? -1)
 
     const res = await sendMessage({
       type: 'save-card',
@@ -303,8 +352,8 @@ export default function App() {
     if (res.ok) {
       setSavedContext(res.data.recordId)
       setSaveState(res.data.queued ? 'queued' : 'saved')
-      if (res.data.syncError) setSaveError('已保存在单词本；Anki：' + res.data.syncError)
       void refreshHistory()
+      void refreshLibraryCount()
     } else {
       setSaveState('idle')
       setSaveError(res.error)
@@ -317,6 +366,17 @@ export default function App() {
       lang: s.tts.lang,
       rate: s.tts.rate,
       autoDetect: s.tts.autoDetect,
+    })
+  }
+
+  const onCopyEntry = () => {
+    if (!entry) return
+    const clean = entry.reading?.replace(/^\/+|\/+$/g, '')
+    const def = edits.definition ?? entry.definition
+    const text = `${entry.word}${clean ? ` /${clean}/` : ''}\n${def}`
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
     })
   }
 
@@ -335,6 +395,7 @@ export default function App() {
       memoryHook: item.memoryHook,
     })
     setCurrentSentence(item.sentence || '')
+    setEditingSentence(false)
     setSourceMeta({
       selection: item.selection || item.word,
       sentenceOffset: item.sentenceOffset ?? -1,
@@ -359,6 +420,7 @@ export default function App() {
     setSourceMeta({ selection: record.card.selection, sentenceOffset: record.card.sentenceOffset, pageUrl: record.card.pageUrl, pageTitle: record.card.pageTitle })
     setQuery(record.card.selection)
     setCurrentSentence(record.card.sentence)
+    setEditingSentence(false)
     setEdits(record.edits ?? {})
     setSavedContext(record.id)
     setSaveState('idle')
@@ -390,8 +452,23 @@ export default function App() {
   }
 
   const sentenceMode = entry?.inputKind === 'sentence' || isSentenceSelection(sourceMeta?.selection || entry?.word || '')
-  const contextBlock = entry && (currentSentence || sentenceMode) ? <ContextBlock key={currentSentence} sentence={currentSentence || sourceMeta?.selection || entry.word} selection={sourceMeta?.selection || entry.word} offset={sourceMeta?.sentenceOffset} translation={(edits.contextTranslation ?? entry.contextTranslation)?.trim() !== (edits.definition ?? entry.definition)?.trim() ? edits.contextTranslation ?? entry.contextTranslation : undefined} /> : null
+  const contextBlock = entry && (currentSentence || sentenceMode) ? (
+    <ContextBlock
+      key={currentSentence}
+      sentence={currentSentence || sourceMeta?.selection || entry.word}
+      selection={sourceMeta?.selection || entry.word}
+      offset={resolveOffset(currentSentence || sourceMeta?.selection || entry.word, sourceMeta?.selection || entry.word, sourceMeta?.sentenceOffset ?? -1)}
+      translation={(edits.contextTranslation ?? entry.contextTranslation)?.trim() !== (edits.definition ?? entry.definition)?.trim() ? edits.contextTranslation ?? entry.contextTranslation : undefined}
+    />
+  ) : null
   const cleanReading = entry?.reading?.replace(/^\/+|\/+$/g, '')
+
+  const filteredHistory = historyFilter.trim()
+    ? historyList.filter(item =>
+        item.word.toLowerCase().includes(historyFilter.toLowerCase())
+        || item.definition.toLowerCase().includes(historyFilter.toLowerCase())
+        || (item.sentence ?? '').toLowerCase().includes(historyFilter.toLowerCase()))
+    : historyList
 
   return (
     <div className="sp-shell">
@@ -486,8 +563,19 @@ export default function App() {
           >
             查词历史 ({historyList.length})
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'library'} tabIndex={tab === 'library' ? 0 : -1}
-            className={`sp-tab ${tab === 'library' ? 'active' : ''}`} onClick={() => setTab('library')}>单词本</button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'library'}
+            tabIndex={tab === 'library' ? 0 : -1}
+            className={`sp-tab ${tab === 'library' ? 'active' : ''}`}
+            onClick={() => {
+              setTab('library')
+              void refreshLibraryCount()
+            }}
+          >
+            单词本
+          </button>
         </div>
       </header>
 
@@ -510,17 +598,74 @@ export default function App() {
                       <Volume2 size={15} />
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className="sp-btn-icon"
+                    title={copied ? '已复制到剪贴板' : '复制词条'}
+                    aria-label="复制词条"
+                    onClick={onCopyEntry}
+                  >
+                    {copied ? <Check size={14} style={{ color: 'var(--teal)' }} /> : <Copy size={14} />}
+                  </button>
                   {!dictionary && !sentenceMode && entry.partOfSpeech && <span className="sp-card-pos">{entry.partOfSpeech}</span>}
                 </div>
               </div>
 
               {dictionary ? <DictionaryView key={dictionary.headword} result={dictionary} context={contextBlock} /> : <><div className="sp-card-def">{edits.definition ?? entry.definition}</div>{contextBlock}</>}
 
+              {/* 支持在侧边栏直接补充或微调所处原句，方便手动查词时也能结合语境生成 AI 详解和语境卡片 */}
+              {!sentenceMode && (
+                <div className="sp-context-editor">
+                  {editingSentence ? (
+                    <div className="sp-context-editor-box">
+                      <label className="sp-context-editor-label">
+                        <span>所处原句（用于语境解析与复习卡片）</span>
+                        <textarea
+                          rows={2}
+                          value={currentSentence}
+                          placeholder={`输入或粘贴包含「${sourceMeta?.selection || entry.word}」的原句…`}
+                          onChange={(e) => {
+                            setCurrentSentence(e.target.value)
+                            setSaveState('idle')
+                          }}
+                        />
+                      </label>
+                      <div className="sp-context-editor-actions">
+                        <button type="button" className="sp-btn-text" onClick={() => setEditingSentence(false)}>完成</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="sp-context-meta-bar">
+                      <button
+                        type="button"
+                        className="sp-context-edit-trigger"
+                        onClick={() => setEditingSentence(true)}
+                      >
+                        <Pencil size={11} />
+                        <span>{currentSentence ? '修改语境原句' : '补充所在原句（可选）'}</span>
+                      </button>
+                      {sourceMeta?.pageUrl && (
+                        <a
+                          href={sourceMeta.pageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="sp-source-link"
+                          title={sourceMeta.pageTitle || sourceMeta.pageUrl}
+                        >
+                          <span>{sourceMeta.pageTitle || '来源网页'}</span>
+                          <ExternalLink size={11} />
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <LearningDetails entry={entry} />
 
               {entry.memoryHook && (
                 <div className="sp-hook">
-                  <strong>💡 记忆线索</strong>
+                  <strong>记忆线索</strong>
                   <div>{entry.memoryHook}</div>
                 </div>
               )}
@@ -552,13 +697,13 @@ export default function App() {
                   {saveState === 'saved' && (
                     <>
                       <Check size={13} />
-                      已保存
+                      已存入单词本
                     </>
                   )}
                   {saveState === 'queued' && (
                     <>
                       <Check size={13} />
-                      已存入单词本，待同步
+                      已存入单词本
                     </>
                   )}
                   {saveState === 'idle' && (savedContext ? '更新这条语境' : '存入单词本')}
@@ -581,12 +726,12 @@ export default function App() {
             <div className="sp-state" role="status">
               <LoaderCircle className="sp-spin" size={20} />
               <strong>正在查询「{query.trim()}」</strong>
-              <span>会优先使用本地词典，再自动补充翻译结果。</span>
+              <span>优先查询本地离线词典，未收录时自动使用在线翻译。</span>
             </div>
           ) : lookupError ? (
             <div className="sp-state sp-state-error" role="alert">
               <AlertCircle size={20} />
-              <strong>这次没有查到结果</strong>
+              <strong>查询未完成</strong>
               <span>{lookupError}</span>
               <div className="sp-state-actions">
                 <button type="button" className="sp-btn-save" onClick={() => void doLookup(query, currentSentence || undefined, sourceMeta || undefined)}>重试</button>
@@ -594,10 +739,58 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="sp-state">
-              <Search size={20} />
-              <strong>查一个正在阅读的词</strong>
-              <span>在上方输入单词，或在网页中划词后打开侧边栏。按 <kbd>/</kbd> 可快速聚焦搜索框。</span>
+            <div className="sp-workbench">
+              <div className="sp-state sp-state-compact">
+                <Search size={20} />
+                <strong>输入或划选词句开始查询</strong>
+                <span>在网页中划选生词会自动同步到这里；也可以按 <kbd>/</kbd> 直接输入查询。</span>
+              </div>
+
+              {libraryCount > 0 && (
+                <div className="sp-quick-card">
+                  <div className="sp-quick-card-head">
+                    <BookOpen size={14} className="sp-quick-icon" />
+                    <strong>单词本已收录 {libraryCount} 条语境</strong>
+                  </div>
+                  <p>随时查看收藏的原句与解析，或开启卡片自测复习。</p>
+                  <button
+                    type="button"
+                    className="sp-btn-subtle sp-btn-compact"
+                    onClick={() => setTab('library')}
+                  >
+                    打开单词本与复习
+                  </button>
+                </div>
+              )}
+
+              {historyList.length > 0 && (
+                <div className="sp-quick-card">
+                  <div className="sp-quick-card-head">
+                    <strong>最近查过</strong>
+                    <button
+                      type="button"
+                      className="sp-btn-text"
+                      onClick={() => setTab('history')}
+                    >
+                      查看全部
+                    </button>
+                  </div>
+                  <div className="sp-recent-chips">
+                    {historyList.slice(0, 6).map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="sp-recent-chip"
+                        title={item.definition}
+                        onClick={() => onSelectHistory(item)}
+                      >
+                        <span className="sp-recent-chip-word">{item.word}</span>
+                        <span className="sp-recent-chip-def">{item.definition}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )
         ) : (
@@ -612,9 +805,18 @@ export default function App() {
             {historyList.length > 0 ? (
               <>
                 <div className="sp-history-toolbar">
+                  {historyList.length > 3 && !confirmClear && (
+                    <input
+                      type="text"
+                      className="sp-history-filter"
+                      placeholder="筛选查词历史…"
+                      value={historyFilter}
+                      onChange={e => setHistoryFilter(e.target.value)}
+                    />
+                  )}
                   {confirmClear ? (
                     <div className="sp-clear-confirm" role="alert">
-                      <span>清空全部 {historyList.length} 条记录？</span>
+                      <span>确定清空全部 {historyList.length} 条查词历史？清空后无法恢复。</span>
                       <button type="button" className="sp-btn-text" onClick={() => setConfirmClear(false)}>取消</button>
                       <button type="button" className="sp-btn-text sp-btn-text-danger" onClick={() => void onClearHistory()}>确认清空</button>
                     </div>
@@ -630,7 +832,7 @@ export default function App() {
                   )}
                 </div>
                 <div className="sp-history-list">
-                  {historyList.map(item => (
+                  {filteredHistory.map(item => (
                     <div
                       key={item.id}
                       className="sp-history-item"
@@ -648,10 +850,25 @@ export default function App() {
                       <div className="sp-history-head">
                         <span className="sp-history-word">{item.word}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {item.savedToAnki && (
-                            <span className="sp-history-badge-ok">已保存</span>
+                          {(item.savedLocally || item.savedToAnki) && (
+                            <span className="sp-history-badge-ok">已收藏</span>
                           )}
                           <span className="sp-history-time">{formatRelativeTime(item.timestamp)}</span>
+                          {isTtsSupported() && (
+                            <button
+                              type="button"
+                              className="sp-btn-icon"
+                              style={{ width: 20, height: 20 }}
+                              title="朗读"
+                              aria-label={`朗读 ${item.word}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onSpeak(item.word)
+                              }}
+                            >
+                              <Volume2 size={12} />
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="sp-btn-icon"
@@ -665,6 +882,9 @@ export default function App() {
                         </div>
                       </div>
                       <div className="sp-history-def">{item.definition}</div>
+                      {item.sentence && item.sentence !== item.word && (
+                        <div className="sp-history-sentence">{item.sentence}</div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -673,7 +893,7 @@ export default function App() {
               <div className="sp-state">
                 <Search size={20} />
                 <strong>还没有查词记录</strong>
-                <span>查询过的词会保存在这里，方便再次查看和保存。</span>
+                <span>查询过的词会保存在这里，方便再次查看和存入单词本。</span>
               </div>
             ) : null}
           </div>

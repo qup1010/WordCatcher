@@ -1,10 +1,11 @@
-import { ExternalLink } from 'lucide-react'
-import { useState } from 'react'
+import { ExternalLink, Inbox, Laptop, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { contextKey } from '@/lib/learning'
 import { sendMessage } from '@/lib/messaging'
-import type { Settings } from '@/lib/types'
+import type { CapturedCard, Settings } from '@/lib/types'
 import { HelpTip } from '../components/HelpTip'
 import { Section } from '../components/Section'
-import { Switch } from '../components/controls'
+import { StatusChip, Switch } from '../components/controls'
 import type { SectionProps, Status } from './types'
 
 interface AnkiSectionProps extends SectionProps {
@@ -12,11 +13,34 @@ interface AnkiSectionProps extends SectionProps {
   onAliveChange: (alive: boolean) => void
 }
 
+function formatTime(ms: number): string {
+  if (!ms) return ''
+  const d = new Date(ms)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionProps) {
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
+  const [queue, setQueue] = useState<CapturedCard[]>([])
+  const [queueStatus, setQueueStatus] = useState<Status>({ kind: 'idle' })
+  const [desktopAlive, setDesktopAlive] = useState<boolean | null>(null)
+
+  const ankiEnabled = s.anki.enabled !== false
 
   const patchAnki = (part: Partial<Settings['anki']>) =>
     onChange({ ...s, anki: { ...s.anki, ...part } })
+
+  const refreshIntegrations = () => {
+    void sendMessage({ type: 'pending-list' }).then((res) => {
+      if (res.ok) setQueue(res.data.cards)
+    })
+    void sendMessage({ type: 'check-desktop-bridge' }).then((res) => {
+      if (res.ok) setDesktopAlive(res.data.alive)
+    })
+  }
+
+  useEffect(refreshIntegrations, [])
 
   const onTest = async () => {
     setStatus({ kind: 'busy' })
@@ -25,17 +49,16 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
     const res = await sendMessage({ type: 'check-anki' })
     if (!res || !res.ok) {
       onAliveChange(false)
-      setStatus({ kind: 'err', text: res?.error ?? '扩展后台无响应，试试重新加载扩展。' })
+      setStatus({ kind: 'err', text: res?.error ?? '扩展后台未响应，请重新加载扩展后再试。' })
       return
     }
     onAliveChange(true)
 
-    // 连上了就顺手把模板刷成最新的；失败时把真实原因展示出来，方便排查坏模板
     const sync = await sendMessage({ type: 'sync-anki-templates' })
     if (sync?.ok) {
       setStatus({
         kind: 'ok',
-        text: `连接正常（AnkiConnect v${res.data.version}），四模式卡片模板已同步。`,
+        text: `连接成功（AnkiConnect v${res.data.version}），四模式卡片模板已更新。`,
       })
       return
     }
@@ -43,101 +66,223 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
     setStatus({
       kind: 'err',
       text: sync?.error
-        ? `Anki 已连接（v${res.data.version}），但模板同步失败：${sync.error}`
-        : `Anki 已连接（v${res.data.version}），但模板同步无响应。请重新加载扩展后再试。`,
+        ? `Anki 已连接（v${res.data.version}），但卡片模板更新未完成：${sync.error}`
+        : `Anki 已连接（v${res.data.version}），但模板更新未响应。请重新加载扩展后再试。`,
     })
+  }
+
+  const onFlush = async () => {
+    setQueueStatus({ kind: 'busy' })
+    const res = await sendMessage({ type: 'flush-pending' })
+    if (!res.ok) {
+      setQueueStatus({ kind: 'err', text: res.error })
+      return
+    }
+
+    const { written, dropped, remaining } = res.data
+    refreshIntegrations()
+    setQueueStatus(remaining > 0
+      ? { kind: 'err', text: `已同步 ${written} 张卡片，仍有 ${remaining} 张待同步。请确认 Anki 正在运行后重试。` }
+      : { kind: 'ok', text: `已同步 ${written} 张卡片${dropped > 0 ? `，已跳过 ${dropped} 张重复卡片` : ''}。` })
+  }
+
+  const onRemove = async (card: CapturedCard) => {
+    const res = await sendMessage({ type: 'remove-pending', payload: { word: card.entry.word, contextKey: contextKey(card) } })
+    if (res.ok) refreshIntegrations()
+  }
+
+  const onClearQueue = async () => {
+    const res = await sendMessage({ type: 'clear-pending' })
+    if (res.ok) {
+      refreshIntegrations()
+      setQueueStatus({ kind: 'ok', text: '待同步队列已清空。' })
+    }
   }
 
   return (
     <Section
       id="sec-anki"
-      index={3}
-      title="Anki 单词本"
-      intro={(
-        <>
-          划词一键制卡并同步至本地 Anki。需安装
-          <a href="https://apps.ankiweb.net/" target="_blank" rel="noreferrer"> Anki 桌面版</a>
-          与 AnkiConnect 插件（插件代码 <code>2055492159</code>
-          <HelpTip title="如何安装 AnkiConnect 插件？">
+      index={5}
+      title="外部拓展联动（可选）"
+      intro="生词默认保存在插件内置的「单词本」中并支持直接复习。如果你同时使用 Windows 桌面版或 Anki，可按需开启以下联动。"
+    >
+      {/* ── Windows 桌面版联动 ── */}
+      <div className="block">
+        <div className="block-head">
+          <Laptop size={14} className="inline-icon" />
+          <strong>Windows 桌面端联动</strong>
+          {desktopAlive !== null && (
+            <StatusChip ok={desktopAlive} okText="桌面端在线" badText="未运行（可选）" />
+          )}
+        </div>
+        <p className="block-hint">
+          开启后，在网页中存入单词本的词条会自动同步至正在运行的 Word Catcher 桌面端生词库。
+        </p>
+        <div className="field" style={{ marginTop: 12 }}>
+          <span>自动同步至桌面端</span>
+          <Switch
+            checked={s.desktopBridge?.enabled ?? true}
+            onChange={enabled => onChange({
+              ...s,
+              desktopBridge: { ...s.desktopBridge, enabled },
+            })}
+          />
+        </div>
+        <label className="field" style={{ marginTop: 10 }}>
+          <span>本地桥接地址</span>
+          <input
+            value={s.desktopBridge?.url ?? 'http://127.0.0.1:18765'}
+            placeholder="http://127.0.0.1:18765"
+            onChange={e => onChange({
+              ...s,
+              desktopBridge: { ...s.desktopBridge, url: e.target.value },
+            })}
+          />
+        </label>
+      </div>
+
+      {/* ── Anki 制卡拓展 ── */}
+      <div className="block">
+        <div className="block-head">
+          <strong>Anki 制卡同步拓展</strong>
+          <HelpTip title="如何配置 AnkiConnect 插件？">
             <ol>
-              <li>打开 Anki 桌面版客户端；</li>
+              <li>打开 <a href="https://apps.ankiweb.net/" target="_blank" rel="noreferrer">Anki 桌面版</a>；</li>
               <li>点击菜单栏「工具」→「附加组件」→「获取附加组件」；</li>
-              <li>填入代码 <strong>2055492159</strong> 并确定安装；</li>
-              <li>重启 Anki 客户端并保持在后台运行。</li>
+              <li>填入插件代码 <strong>2055492159</strong> 安装并重启 Anki。</li>
             </ol>
             <div className="help-tip-links">
               <a href="https://foosoft.net/projects/anki-connect/" target="_blank" rel="noreferrer">
-                <span>AnkiConnect 官方项目主页</span>
-                <ExternalLink size={11} />
-              </a>
-              <a href="https://git.sr.ht/~foosoft/anki-connect" target="_blank" rel="noreferrer">
-                <span>源码仓库 (~foosoft/anki-connect)</span>
+                <span>AnkiConnect 项目说明</span>
                 <ExternalLink size={11} />
               </a>
             </div>
           </HelpTip>
-          ），使用时保持 Anki 在后台运行。
-        </>
-      )}
-    >
-      <label className="field">
-        <span>AnkiConnect 地址</span>
-        <input value={s.anki.url} onChange={e => patchAnki({ url: e.target.value })} />
-      </label>
-
-      <label className="field">
-        <span>目标牌组</span>
-        <input value={s.anki.deckName} onChange={e => patchAnki({ deckName: e.target.value })} />
-      </label>
-      <p className="hint">
-        不存在时会自动创建。卡片会自动生成 4 种子牌组独立复习：
-        语境挖空 (Context)、看词识义 (Recognition)、看义写词 (Production)、听音辨义 (Listening)。
-      </p>
-
-      <label className="field">
-        <span>笔记类型</span>
-        <input
-          value={s.anki.noteTypeName}
-          onChange={e => patchAnki({ noteTypeName: e.target.value })}
-        />
-      </label>
-      <p className="hint">默认「Word Catcher」，首次同步或建卡时会自动配置卡片字段与排版样式。</p>
-
-      <div className="field">
-        <span>原句挖空</span>
-        <div className="field-inline">
-          <Switch
-            checked={s.anki.clozeContext}
-            onChange={clozeContext => patchAnki({ clozeContext })}
-          />
-          <span className="field-inline-label">卡片正面隐去原句中的目标词</span>
         </div>
+        <p className="block-hint">
+          将保存的词条自动生成 4 种模式的 Anki 复习卡片（语境填空、看词识义、看义写词、听音辨词）。不使用 Anki 时可关闭此开关。
+        </p>
+
+        <div className="field" style={{ marginTop: 14 }}>
+          <span>启用 Anki 同步</span>
+          <div className="field-inline">
+            <Switch
+              checked={ankiEnabled}
+              onChange={enabled => patchAnki({ enabled })}
+            />
+            <span className="field-inline-label">
+              {ankiEnabled ? '保存词条时自动同步至 Anki（离线时暂存队列）' : '已关闭（仅保存在插件内置单词本）'}
+            </span>
+          </div>
+        </div>
+
+        {ankiEnabled && (
+          <>
+            <label className="field" style={{ marginTop: 12 }}>
+              <span>AnkiConnect 地址</span>
+              <input value={s.anki.url} onChange={e => patchAnki({ url: e.target.value })} />
+            </label>
+
+            <label className="field" style={{ marginTop: 12 }}>
+              <span>目标牌组</span>
+              <input value={s.anki.deckName} onChange={e => patchAnki({ deckName: e.target.value })} />
+            </label>
+            <p className="hint">不存在时会自动创建主牌组及四个子牌组。</p>
+
+            <label className="field" style={{ marginTop: 12 }}>
+              <span>笔记类型</span>
+              <input
+                value={s.anki.noteTypeName}
+                onChange={e => patchAnki({ noteTypeName: e.target.value })}
+              />
+            </label>
+
+            <div className="field" style={{ marginTop: 12 }}>
+              <span>原句挖空</span>
+              <div className="field-inline">
+                <Switch
+                  checked={s.anki.clozeContext}
+                  onChange={clozeContext => patchAnki({ clozeContext })}
+                />
+                <span className="field-inline-label">在卡片正面将原句中的目标词替换为填空</span>
+              </div>
+            </div>
+
+            <div className="row" style={{ marginTop: 16 }}>
+              <button className="btn" onClick={() => void onTest()} disabled={status.kind === 'busy'}>
+                {status.kind === 'busy' ? '检测中…' : '测试连接并更新卡片模板'}
+              </button>
+            </div>
+
+            {status.kind === 'ok' && <p className="ok">{status.text}</p>}
+            {status.kind === 'err' && (
+              <div className="err">
+                <p>{status.text}</p>
+                <details>
+                  <summary>连接排查步骤</summary>
+                  <ol>
+                    <li>确认 Anki 桌面版正在运行。</li>
+                    <li>在 Anki「工具 → 附加组件」中确认已安装 AnkiConnect（代码 <code>2055492159</code>）。</li>
+                    <li>若仍无法连接，可在 AnkiConnect 配置的 <code>webCorsOriginList</code> 中添加 <code>"*"</code> 后重启 Anki。</li>
+                  </ol>
+                </details>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
-      <div className="row">
-        <button className="btn" onClick={() => void onTest()} disabled={status.kind === 'busy'}>
-          {status.kind === 'busy' ? '检测中…' : '测试连接并同步卡片模板'}
-        </button>
-      </div>
+      {/* ── Anki 待同步队列 ── */}
+      {(ankiEnabled || queue.length > 0) && (
+        <div className="block">
+          <div className="block-head">
+            <Inbox size={14} className="inline-icon" />
+            <strong>Anki 待同步队列</strong>
+            {queue.length > 0 && <span className="chip">{queue.length}</span>}
+          </div>
+          <p className="block-hint">
+            Anki 未运行时保存的卡片会暂存在此处（词条本身已保存在本地单词本）。打开 Anki 后可一键补写。
+          </p>
 
-      {status.kind === 'ok' && <p className="ok">{status.text}</p>}
-      {status.kind === 'err' && (
-        <div className="err">
-          <p>{status.text}</p>
-          <details>
-            <summary>排查步骤</summary>
-            <ol>
-              <li>确认 Anki 桌面版正在运行（不是手机版或网页版）。</li>
-              <li>
-                「工具 → 附加组件」里确认有 AnkiConnect；没有则用代码
-                <code>2055492159</code> 安装并重启。
-              </li>
-              <li>
-                仍失败：选中 AnkiConnect →「配置」，在 <code>webCorsOriginList</code> 里
-                加一项 <code>"*"</code>，重启 Anki。
-              </li>
-            </ol>
-          </details>
+          {queue.length === 0
+            ? <p className="empty">当前没有待同步至 Anki 的卡片。</p>
+            : (
+                <>
+                  <ul className="queue-list">
+                    {queue.map(card => (
+                      <li key={contextKey(card)}>
+                        <div className="queue-item">
+                          <span className="queue-word">{card.entry.word}</span>
+                          <span className="queue-def">{card.entry.definition}</span>
+                        </div>
+                        <span className="queue-time">{formatTime(card.createdAt)}</span>
+                        <button
+                          type="button"
+                          className="btn btn-icon btn-danger"
+                          title={`移出待同步队列（保留在本地单词本）`}
+                          onClick={() => void onRemove(card)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="block-actions">
+                    <button
+                      className="btn"
+                      disabled={queueStatus.kind === 'busy'}
+                      onClick={() => void onFlush()}
+                    >
+                      {queueStatus.kind === 'busy' ? '同步中…' : '立即同步至 Anki'}
+                    </button>
+                    <button className="btn" onClick={() => void onClearQueue()}>清空队列</button>
+                  </div>
+                </>
+              )}
+
+          {queueStatus.kind === 'ok' && <p className="ok">{queueStatus.text}</p>}
+          {queueStatus.kind === 'err' && <p className="err">{queueStatus.text}</p>}
         </div>
       )}
     </Section>

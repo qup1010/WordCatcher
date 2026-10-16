@@ -40,7 +40,7 @@ function CopyBtn({ text, title = '复制词条' }: { text: string, title?: strin
     <button
       type="button"
       className={`wc-head-btn ${copied ? 'wc-copied' : ''}`}
-      title={copied ? '已复制到剪贴板！' : title}
+      title={copied ? '已复制到剪贴板' : title}
       aria-label={copied ? '已复制' : title}
       onClick={onCopy}
     >
@@ -204,7 +204,7 @@ function EntryBody({
             <button
               type="button"
               className="wc-speak"
-              title="试听读音 (P)"
+              title="朗读 (P)"
               aria-label={`朗读 ${word}`}
               onClick={(e) => {
                 e.stopPropagation()
@@ -572,12 +572,54 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   }, [])
 
   const openSidePanel = useCallback(async () => {
+    if (anchor) {
+      const currentEntry = phase.kind === 'result'
+        ? phase.entry
+        : phase.kind === 'quick' && phase.mode === 'dict'
+          ? {
+              word: phase.dict.headword,
+              reading: phase.dict.reading || '',
+              partOfSpeech: phase.dict.primaryPos || '',
+              definition: phase.dict.coreMeanings.join('； '),
+              contextTranslation: '',
+              memoryHook: phase.dict.memoryHook,
+            }
+          : undefined
+      void sendMessage({
+        type: 'sidepanel-set-active',
+        payload: {
+          word: currentEntry?.word || anchor.ctx.selection,
+          selection: anchor.ctx.selection,
+          sentence: anchor.ctx.sentence,
+          sentenceOffset: anchor.ctx.offset,
+          pageUrl: location.href,
+          pageTitle: document.title,
+          entry: currentEntry,
+          dict: phase.kind === 'quick' && phase.mode === 'dict' ? phase.dict : undefined,
+          updatedAt: Date.now(),
+        },
+      })
+    }
     const res = await sendMessage({ type: 'open-sidepanel' })
     if (!res.ok) {
       setSidePanelHint(true)
       setTimeout(() => setSidePanelHint(false), 3500)
+    } else if (anchor) {
+      setTimeout(() => {
+        if (phase.kind === 'result') {
+          browser.runtime.sendMessage({
+            type: 'sidepanel-sync-entry',
+            payload: { entry: phase.entry, selection: anchor.ctx.selection, sentence: anchor.ctx.sentence, sentenceOffset: anchor.ctx.offset, pageUrl: location.href, pageTitle: document.title },
+          }).catch(() => {})
+        } else {
+          browser.runtime.sendMessage({
+            type: 'sidepanel-sync-word',
+            payload: { word: anchor.ctx.selection, selection: anchor.ctx.selection, sentence: anchor.ctx.sentence, sentenceOffset: anchor.ctx.offset, pageUrl: location.href, pageTitle: document.title },
+          }).catch(() => {})
+        }
+      }, 220)
     }
-  }, [])
+  }, [anchor, phase])
 
   const speakText = useCallback((text: string) => {
     speak(text, {
@@ -935,7 +977,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                     <button
                       type="button"
                       className="wc-speak"
-                      title={isLongText ? '朗读原文' : '试听读音 (P)'}
+                      title={isLongText ? '朗读原文' : '朗读 (P)'}
                       aria-label={isLongText ? '朗读原文' : `朗读 ${wordToSpeak}`}
                       onClick={(e) => {
                         e.stopPropagation()
@@ -977,7 +1019,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                     phase.mode === 'dict'
                       ? '已从本地 Open Dictionary 离线词库检索'
                       : phase.fellBack
-                        ? `首选服务连不上，已自动切换到${MT_PROVIDER_LABELS[phase.provider]}`
+                        ? `默认翻译服务暂时无法连接，已自动切换至${MT_PROVIDER_LABELS[phase.provider]}`
                         : undefined
                   }
                 >
@@ -1178,7 +1220,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             />
             <div className="wc-state wc-state-quiet">
               <Dots />
-              <span>正在结合上下文解释「{anchor.ctx.selection}」</span>
+              <span>正在结合语境生成「{anchor.ctx.selection}」的释义</span>
             </div>
           </>
         )}
@@ -1265,7 +1307,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               {save.kind === 'queued' && (
                 <span className="wc-note wc-note-ok">
                   <Check size={13} />
-                  <span>Anki 未连接，{save.pending} 张卡片待同步</span>
+                  <span>已存入单词本</span>
                 </span>
               )}
 
@@ -1281,7 +1323,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                   className="wc-link"
                   onClick={() => void sendMessage({ type: 'open-options' })}
                 >
-                  去设置
+                  打开设置
                 </button>
               </div>
             )}
