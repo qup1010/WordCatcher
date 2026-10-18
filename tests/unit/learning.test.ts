@@ -1,6 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { __resetStorage } from '../helpers/wxt-imports-stub'
-import { readLearning, saveLearning, updateLearning, exportLearning, effectiveCard, markLearningSync } from '../../lib/learning'
+import {
+  readLearning,
+  readTombstones,
+  saveLearning,
+  updateLearning,
+  removeLearning,
+  importLearning,
+  exportLearning,
+  exportSyncLearning,
+  mergeLearningRecords,
+  effectiveCard,
+  markLearningSync,
+} from '../../lib/learning'
 import { enqueue, readPending } from '../../lib/pending'
 import { buildNoteFields } from '../../lib/anki'
 import { DEFAULT_SETTINGS, type CapturedCard } from '../../lib/types'
@@ -76,5 +88,113 @@ describe('context learning records', () => {
     await expect(saveLearning(card(undefined, ' '))).rejects.toThrow()
     await expect(saveLearning({ ...card(), edits: { definition: ' ' } })).rejects.toThrow()
     expect(await readLearning()).toEqual([])
+  })
+  it('imports Windows desktop exported JSON format with Occurrences and Edits', async () => {
+    const desktopJson = JSON.stringify([
+      {
+        Id: 'word-1',
+        NormalizedWord: 'serendipity',
+        DisplayWord: 'serendipity',
+        Reading: '/ˌserənˈdɪpəti/',
+        PartOfSpeech: 'n.',
+        Definition: '意外发现珍奇事物的本领',
+        MemoryHook: 'serendip + ity',
+        Occurrences: [
+          {
+            Id: 'occ-1',
+            WordId: 'word-1',
+            SelectedText: 'serendipity',
+            Sentence: 'It was pure serendipity.',
+            SelectionOffset: 12,
+            ContextTranslation: '这完全是机缘巧合。',
+            SourceProcess: 'reader.exe',
+            SourceWindowTitle: 'Book',
+            SourceUri: 'https://example.com/1',
+            CapturedAtUtc: '2026-10-15T10:00:00Z',
+            LearningResult: {
+              Word: 'serendipity',
+              Reading: '/ˌserənˈdɪpəti/',
+              PartOfSpeech: 'n.',
+              Definition: '机缘巧合',
+              ContextTranslation: '这完全是机缘巧合。',
+              Analysis: {
+                InputKind: 'word',
+                Expression: 'serendipity',
+                KeyExplanation: '指偶遇美好事物的运气。',
+                UsageNote: '常与 pure 搭配',
+                Example: 'Finding that café was pure serendipity.',
+                ExampleTranslation: '找到那家咖啡馆纯属意外之喜。',
+              },
+            },
+            Edits: {
+              Definition: '我的自定义释义',
+              ContextTranslation: '我的自定义译文',
+              Note: '重点词汇',
+            },
+          },
+        ],
+      },
+    ])
+
+    const added = await importLearning(desktopJson)
+    expect(added).toBe(1)
+    const list = await readLearning()
+    expect(list).toHaveLength(1)
+    expect(list[0].id).toBe('occ-1')
+    expect(list[0].card.entry.word).toBe('serendipity')
+    expect(list[0].card.entry.keyExplanation).toBe('指偶遇美好事物的运气。')
+    expect(list[0].edits?.definition).toBe('我的自定义释义')
+    expect(list[0].edits?.note).toBe('重点词汇')
+  })
+  it('records soft-delete tombstones and merges causally newer remote edits', async () => {
+    const river = await saveLearning(card('We sat on the bank.', '河岸'))
+    const money = await saveLearning(card('I went to the bank.', '银行'))
+
+    await removeLearning(river.id)
+    expect(await readLearning()).toHaveLength(1)
+    expect(await readTombstones()).toHaveLength(1)
+
+    const syncPayload = JSON.parse(await exportSyncLearning())
+    expect(syncPayload.records).toHaveLength(2)
+
+    // 模拟远端把 money 更新为 revision 5，并新增一条 bridge 语境，同时携带旧版未删除的 river (revision 1)
+    const remotePayload = JSON.stringify({
+      format: 'word-catcher-learning',
+      version: 3,
+      exportedAt: new Date().toISOString(),
+      records: [
+        {
+          ...river,
+          revision: 1,
+          updatedAt: river.savedAt,
+        },
+        {
+          ...money,
+          revision: 5,
+          versionVector: { ...money.versionVector, 'fixture-remote': 1 },
+          updatedAt: Date.now() + 5000,
+          edits: { definition: '远端修改后的银行释义', note: '多端同步笔记' },
+        },
+        {
+          id: 'remote-new-1',
+          revision: 1,
+          versionVector: { 'fixture-remote': 1 },
+          savedAt: Date.now() + 1000,
+          updatedAt: Date.now() + 1000,
+          card: card('They crossed the bridge.', '桥'),
+        },
+      ],
+    })
+
+    const merged = await mergeLearningRecords(remotePayload)
+    expect(merged.added).toBe(1)
+    expect(merged.updated).toBe(1)
+    expect(merged.removed).toBe(0)
+    expect(merged.total).toBe(2)
+
+    const finalRecords = await readLearning()
+    expect(finalRecords.some(r => r.id === river.id)).toBe(false)
+    expect(finalRecords.find(r => r.id === money.id)?.edits?.note).toBe('多端同步笔记')
+    expect(finalRecords.some(r => r.id === 'remote-new-1')).toBe(true)
   })
 })

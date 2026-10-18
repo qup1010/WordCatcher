@@ -30,6 +30,7 @@ export type ParseResult =
 const KNOWN_KEYS = [
   'ai',
   'anki',
+  'webdav',
   'tts',
   'mt',
   'explainLanguage',
@@ -37,6 +38,7 @@ const KNOWN_KEYS = [
   'TranslationProfiles',
   'ExplainLanguage',
   'Anki',
+  'WebDav',
 ]
 
 export function buildBackup(settings: Settings, exportedAt: string, history?: HistoryItem[]): Backup {

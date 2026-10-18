@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 // 直接引 stub 文件而不是 '#imports'：vitest 的 alias 会把两者解析到同一模块实例，
 // 而 '#imports' 在 tsc 眼里是 WXT 生成的类型，并不包含这个测试专用的重置函数
 import { __resetStorage } from '../helpers/wxt-imports-stub'
-import { activeAiProfile, getSettings, isAiConfigured, normalizeSettings, saveSettings } from '../../lib/settings'
+import { activeAiProfile, getSettings, isAiConfigured, isWebDavConfigured, normalizeSettings, saveSettings } from '../../lib/settings'
 import { DEFAULT_SETTINGS } from '../../lib/types'
 
 beforeEach(() => {
@@ -94,6 +94,34 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({}).blacklist).toEqual([])
     expect(normalizeSettings({ blacklist: ['github.com', 'localhost'] }).blacklist).toEqual(['github.com', 'localhost'])
     expect(normalizeSettings({ blacklist: 'not-array' as any }).blacklist).toEqual([])
+  })
+
+  it('webdav 配置与桌面端 WebDav 字段兼容解析', () => {
+    const fromPlugin = normalizeSettings({
+      webdav: {
+        enabled: true,
+        url: 'https://dav.example.com/dav',
+        username: 'user',
+        password: 'pwd',
+        remotePath: 'WordCatcher/vocabulary-sync.json',
+        autoSync: false,
+      },
+    })
+    expect(isWebDavConfigured(fromPlugin)).toBe(true)
+    expect(fromPlugin.webdav.autoSync).toBe(false)
+
+    const fromDesktop = normalizeSettings({
+      WebDav: {
+        Enabled: true,
+        Url: 'https://dav.example.com/desktop',
+        Username: 'desk-user',
+        RemotePath: 'WordCatcher/vocabulary-sync.json',
+        AutoSync: true,
+      },
+    })
+    expect(fromDesktop.webdav.enabled).toBe(true)
+    expect(fromDesktop.webdav.url).toBe('https://dav.example.com/desktop')
+    expect(fromDesktop.webdav.username).toBe('desk-user')
   })
 })
 

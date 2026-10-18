@@ -1,4 +1,5 @@
 import { contextKey, saveLearning, readLearning, updateLearning, removeLearning, importLearning, exportLearning, effectiveCard, markLearningSync } from '@/lib/learning'
+import { WebDavError, getWebDavSyncState, syncLearningWithWebDav, testWebDavConnection } from '@/lib/webdav'
 import { browser, defineBackground } from '#imports'
 import type { Browser } from 'wxt/browser'
 import { AiError, PREVIEW_SAMPLE, listModels, streamEntry, testConnection } from '@/lib/ai'
@@ -9,7 +10,6 @@ import {
   findExisting,
   updateModelTemplates,
 } from '@/lib/anki'
-import { checkDesktopBridge, syncCardToDesktop } from '@/lib/desktop-bridge'
 import { cacheKey, cacheSize, clearCache, getCached, setCached } from '@/lib/entry-cache'
 import { MtError, quickTranslate } from '@/lib/machine-translate'
 import {
@@ -41,6 +41,19 @@ import {
 import { getSettings, isAiConfigured } from '@/lib/settings'
 
 let lastActiveLookup: ActiveLookupSnapshot | null = null
+let webdavDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleWebDavAutoSync(forcePush = true): void {
+  if (webdavDebounceTimer) clearTimeout(webdavDebounceTimer)
+  webdavDebounceTimer = setTimeout(() => {
+    webdavDebounceTimer = null
+    void getSettings().then((s) => {
+      if (s.webdav?.enabled && s.webdav.autoSync && s.webdav.url.trim()) {
+        void syncLearningWithWebDav(s.webdav, forcePush).catch(() => {})
+      }
+    }).catch(() => {})
+  }, 2500)
+}
 
 async function handle(req: Request, sender?: Browser.runtime.MessageSender): Promise<Result<unknown>> {
   const settings = await getSettings()
@@ -175,7 +188,6 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     case 'save-card': {
       const record = await saveLearning(req.payload)
       const card = effectiveCard(record)
-      const syncDesktop = () => syncCardToDesktop({ ...record.card, edits: record.edits, updateExisting: true }, settings).catch(() => false)
 
       if (!card.entry.contextTranslation && card.sentence) {
         try {
@@ -183,23 +195,26 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
           card.entry.contextTranslation = mt.translation
         } catch { /* 原始学习记录已保存，补译失败不影响收藏。 */ }
       }
+      if (settings.webdav?.enabled && settings.webdav.autoSync && settings.webdav.url.trim()) {
+        scheduleWebDavAutoSync(true)
+      }
 
       // 若用户关闭了 Anki 自动同步拓展，直接保存在本地单词本即可，无需报错或入队
       if (settings.anki.enabled === false) {
         void markHistorySaved(record.card.entry.word)
-        return { ok: true, data: { noteId: null, queued: false, recordId: record.id, syncedToDesktop: await syncDesktop() } }
+        return { ok: true, data: { noteId: null, queued: false, recordId: record.id } }
       }
 
       try {
         const noteId = await addNote(card, settings)
         await markLearningSync(record.id, undefined, record.revision)
         void markHistorySaved(record.card.entry.word)
-        return { ok: true, data: { noteId, queued: false, recordId: record.id, syncedToDesktop: await syncDesktop() } }
+        return { ok: true, data: { noteId, queued: false, recordId: record.id } }
       } catch (err) {
         const message = toErrorMessage(err)
         await markLearningSync(record.id, message, record.revision)
         const pending = await enqueue(card)
-        return { ok: true, data: { noteId: null, queued: true, pending, recordId: record.id, syncError: message, syncedToDesktop: await syncDesktop() } }
+        return { ok: true, data: { noteId: null, queued: true, pending, recordId: record.id, syncError: message } }
       }
     }
 
@@ -209,14 +224,23 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
       return { ok: true, data: await exportLearning() }
     case 'library-import': {
       const added = await importLearning(req.payload.json)
+      if (added > 0 && settings.webdav?.enabled && settings.webdav.autoSync && settings.webdav.url.trim()) {
+        scheduleWebDavAutoSync(true)
+      }
       return { ok: true, data: { added, records: await readLearning() } }
     }
     case 'library-remove': {
       const next = await removeLearning(req.payload.id)
+      if (settings.webdav?.enabled && settings.webdav.autoSync && settings.webdav.url.trim()) {
+        scheduleWebDavAutoSync(true)
+      }
       return { ok: true, data: next }
     }
     case 'library-update': {
       const record = await updateLearning(req.payload.id, req.payload.edits)
+      if (settings.webdav?.enabled && settings.webdav.autoSync && settings.webdav.url.trim()) {
+        scheduleWebDavAutoSync(true)
+      }
       if (settings.anki.enabled !== false) {
         await enqueue(effectiveCard(record))
       }
@@ -237,6 +261,22 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
       }
     }
 
+    case 'webdav-test': {
+      const res = await testWebDavConnection(settings.webdav)
+      return { ok: true, data: res }
+    }
+
+    case 'webdav-sync': {
+      const res = await syncLearningWithWebDav(settings.webdav, req.payload?.forcePush ?? false)
+      const records = await readLearning()
+      return { ok: true, data: { ...res, records } }
+    }
+
+    case 'webdav-status': {
+      const state = await getWebDavSyncState()
+      return { ok: true, data: state }
+    }
+
     case 'pending-count': {
       return { ok: true, data: { count: await pendingCount() } }
     }
@@ -246,7 +286,7 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     }
 
     case 'remove-pending': {
-      return { ok: true, data: { count: await removePending(req.payload.word, req.payload.contextKey) } }
+      return { ok: true, data: { count: await removePending(req.payload.word, req.payload.contextKey, req.payload.recordId) } }
     }
 
     case 'clear-pending': {
@@ -267,9 +307,14 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     case 'flush-pending': {
       const result = await flushPending(
         async card => {
-          const current = card.recordId ? (await readLearning()).find(r => r.id === card.recordId) : undefined
-          const noteId = await addNote(current ? effectiveCard(current) : card, settings)
-          if (card.recordId) await markLearningSync(card.recordId, undefined, current?.revision ?? card.recordRevision)
+          const records = await readLearning()
+          const matches = card.recordId
+            ? records.filter(r => r.id === card.recordId)
+            : records.filter(r => contextKey(r.card) === contextKey(card))
+          if (matches.length !== 1) throw new Error('本地记录已删除或身份不明确，跳过 Anki 写入。')
+          const current = matches[0]
+          const noteId = await addNote(effectiveCard(current), settings)
+          await markLearningSync(current.id, undefined, current.revision)
           return noteId
         },
         err => err instanceof AnkiError && err.kind === 'unreachable',
@@ -287,11 +332,6 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     case 'check-anki': {
       const version = await checkConnection(settings.anki.url)
       return { ok: true, data: { version } }
-    }
-
-    case 'check-desktop-bridge': {
-      const alive = await checkDesktopBridge(settings.desktopBridge.url)
-      return { ok: true, data: { alive } }
     }
 
     case 'sync-anki-templates': {
@@ -386,7 +426,7 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
 }
 
 function toErrorMessage(err: unknown): string {
-  if (err instanceof AnkiError || err instanceof AiError || err instanceof MtError) return err.message
+  if (err instanceof AnkiError || err instanceof AiError || err instanceof MtError || err instanceof WebDavError) return err.message
   if (err instanceof Error) return err.message
   return String(err)
 }

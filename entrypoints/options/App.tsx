@@ -20,7 +20,7 @@ const NAV_SECTIONS = [
   { id: 'sec-mt', label: '快速翻译', icon: Zap },
   { id: 'sec-ai', label: 'AI 语境详解', icon: Sparkles },
   { id: 'sec-data', label: '数据与单词本', icon: Database },
-  { id: 'sec-anki', label: '外部拓展联动', icon: Layers },
+  { id: 'sec-anki', label: 'Anki 制卡', icon: Layers },
   { id: 'sec-about', label: '关于与致谢', icon: Info },
 ] as const
 

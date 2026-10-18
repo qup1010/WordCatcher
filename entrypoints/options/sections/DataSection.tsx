@@ -1,19 +1,33 @@
-import { BookOpen, Download, Upload } from 'lucide-react'
+import { BookOpen, Cloud, Download, RefreshCw, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { backupFileName, buildBackup, describeSettings, parseBackup } from '@/lib/backup'
 import { sendMessage } from '@/lib/messaging'
 import { saveSettings } from '@/lib/settings'
+import type { Settings, WebDavSyncState } from '@/lib/types'
 import { Section } from '../components/Section'
+import { StatusChip, Switch } from '../components/controls'
 import type { SectionProps, Status } from './types'
 
-export function DataSection({ s, onChange }: SectionProps) {
+function formatSyncTime(ms?: number): string {
+  if (!ms) return ''
+  const d = new Date(ms)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+export function DataSection({ s, onChange, flush }: SectionProps) {
   const [libraryCount, setLibraryCount] = useState(0)
   const [libraryStatus, setLibraryStatus] = useState<Status>({ kind: 'idle' })
+  const [webdavStatus, setWebdavStatus] = useState<Status>({ kind: 'idle' })
+  const [webdavState, setWebdavState] = useState<WebDavSyncState>({})
   const [cacheSize, setCacheSize] = useState(0)
   const [cacheNote, setCacheNote] = useState<string | null>(null)
   const [backupStatus, setBackupStatus] = useState<Status>({ kind: 'idle' })
   const fileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
+
+  const patchWebDav = (part: Partial<Settings['webdav']>) =>
+    onChange({ ...s, webdav: { ...s.webdav, ...part } })
 
   const refresh = () => {
     void sendMessage({ type: 'library-list' }).then((res) => {
@@ -22,9 +36,53 @@ export function DataSection({ s, onChange }: SectionProps) {
     void sendMessage({ type: 'cache-stats' }).then((res) => {
       if (res.ok) setCacheSize(res.data.size)
     })
+    void sendMessage({ type: 'webdav-status' }).then((res) => {
+      if (res.ok) setWebdavState(res.data)
+    })
   }
 
   useEffect(refresh, [])
+
+  const onTestWebDav = async () => {
+    setWebdavStatus({ kind: 'busy' })
+    await flush()
+    const res = await sendMessage({ type: 'webdav-test' })
+    if (!res.ok) {
+      setWebdavStatus({ kind: 'err', text: res.error })
+      return
+    }
+    setWebdavStatus({
+      kind: 'ok',
+      text: res.data.exists
+        ? `WebDAV 连接成功，已检测到远端同步文件（${res.data.fileUrl}）。`
+        : `WebDAV 连接成功，远端目录就绪，首次同步时将自动创建 ${res.data.fileUrl}。`,
+    })
+  }
+
+  const onSyncWebDav = async () => {
+    setWebdavStatus({ kind: 'busy' })
+    await flush()
+    const res = await sendMessage({ type: 'webdav-sync', payload: { forcePush: true } })
+    if (!res.ok) {
+      setWebdavStatus({ kind: 'err', text: res.error })
+      refresh()
+      return
+    }
+    const { added, updated, removed, total, syncedAt } = res.data
+    setLibraryCount(total)
+    setWebdavState({ lastSyncedAt: syncedAt, added, updated, removed, total })
+    const details = [
+      added > 0 ? `新增 ${added} 条` : '',
+      updated > 0 ? `更新 ${updated} 条` : '',
+      removed > 0 ? `同步删除 ${removed} 条` : '',
+    ].filter(Boolean).join('，')
+    setWebdavStatus({
+      kind: 'ok',
+      text: details
+        ? `WebDAV 同步完成：${details}（当前共 ${total} 条语境记录）。`
+        : `WebDAV 同步完成，云端与本地数据已一致（共 ${total} 条语境记录）。`,
+    })
+  }
 
   const onExportLibrary = async () => {
     const res = await sendMessage({ type: 'library-export' })
@@ -109,13 +167,124 @@ export function DataSection({ s, onChange }: SectionProps) {
     })
   }
 
+  const webdavEnabled = Boolean(s.webdav?.enabled)
+
   return (
     <Section
       id="sec-data"
       index={4}
       title="数据与单词本"
-      intro="管理本地单词本备份、插件配置迁移与 AI 释义缓存。"
+      intro="管理 WebDAV 多端单词本同步、本地单词本备份、插件配置迁移与 AI 释义缓存。"
     >
+      {/* ── WebDAV 多端单词本同步 ── */}
+      <div className="block">
+        <div className="block-head">
+          <Cloud size={14} className="inline-icon" />
+          <strong>WebDAV 单词本多端同步</strong>
+          {webdavEnabled && (
+            <StatusChip
+              ok={Boolean(s.webdav.url.trim()) && !webdavState.lastError}
+              okText={webdavState.lastSyncedAt ? `上次同步 ${formatSyncTime(webdavState.lastSyncedAt)}` : '已开启'}
+              badText={webdavState.lastError ? '同步异常' : '待配置地址'}
+            />
+          )}
+        </div>
+        <p className="block-hint">
+          各端配置相同的 HTTPS WebDAV 地址和文件路径，可同步词条、语境、编辑和删除。自动同步在修改词条或打开单词本时触发，也可点击「立即同步」拉取其他设备的改动。服务器需支持强 ETag 条件写入；发生冲突时会停止上传并保留两端内容。
+        </p>
+
+        <div className="field" style={{ marginTop: 12 }}>
+          <span>启用 WebDAV 同步</span>
+          <div className="field-inline">
+            <Switch
+              checked={webdavEnabled}
+              onChange={enabled => patchWebDav({ enabled })}
+            />
+            <span className="field-inline-label">
+              {webdavEnabled ? '已启用多端单词本同步' : '已关闭（仅使用本地存储）'}
+            </span>
+          </div>
+        </div>
+
+        {webdavEnabled && (
+          <>
+            <label className="field" style={{ marginTop: 12 }}>
+              <span>WebDAV 地址</span>
+              <input
+                value={s.webdav.url}
+                placeholder="https://dav.jianguoyun.com/dav/"
+                onChange={e => patchWebDav({ url: e.target.value })}
+              />
+            </label>
+
+            <label className="field" style={{ marginTop: 12 }}>
+              <span>同步文件路径</span>
+              <input
+                value={s.webdav.remotePath}
+                placeholder="WordCatcher/vocabulary-sync.json"
+                onChange={e => patchWebDav({ remotePath: e.target.value })}
+              />
+            </label>
+
+            <label className="field" style={{ marginTop: 12 }}>
+              <span>用户名 / 账号</span>
+              <input
+                value={s.webdav.username}
+                placeholder="WebDAV 用户名或邮箱"
+                onChange={e => patchWebDav({ username: e.target.value })}
+              />
+            </label>
+
+            <label className="field" style={{ marginTop: 12 }}>
+              <span>密码 / 应用密码</span>
+              <input
+                type="password"
+                value={s.webdav.password}
+                placeholder="WebDAV 密码或专用应用密码"
+                onChange={e => patchWebDav({ password: e.target.value })}
+              />
+            </label>
+
+            <div className="field" style={{ marginTop: 12 }}>
+              <span>自动同步</span>
+              <div className="field-inline">
+                <Switch
+                  checked={s.webdav.autoSync !== false}
+                  onChange={autoSync => patchWebDav({ autoSync })}
+                />
+                <span className="field-inline-label">保存、编辑、删除词条或打开单词本时自动与云端合并</span>
+              </div>
+            </div>
+
+            <div className="block-actions" style={{ marginTop: 16 }}>
+              <button
+                type="button"
+                className="btn"
+                disabled={webdavStatus.kind === 'busy'}
+                onClick={() => void onTestWebDav()}
+              >
+                {webdavStatus.kind === 'busy' ? '处理中…' : '测试 WebDAV 连接'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-icon"
+                disabled={webdavStatus.kind === 'busy'}
+                onClick={() => void onSyncWebDav()}
+              >
+                <RefreshCw size={14} />
+                <span>立即同步单词本</span>
+              </button>
+            </div>
+
+            {webdavStatus.kind === 'ok' && <p className="ok">{webdavStatus.text}</p>}
+            {webdavStatus.kind === 'err' && <p className="err">{webdavStatus.text}</p>}
+            {webdavStatus.kind === 'idle' && webdavState.lastError && (
+              <p className="err">上次同步失败：{webdavState.lastError}</p>
+            )}
+          </>
+        )}
+      </div>
+
       {/* ── 本地单词本数据 ── */}
       <div className="block">
         <div className="block-head">
@@ -162,7 +331,7 @@ export function DataSection({ s, onChange }: SectionProps) {
         </div>
         <p className="block-hint">
           更换设备时可将当前设置与最近查词历史导出迁移（同样兼容导入 Windows 桌面端的设置文件）。
-          <strong className="warn-inline">导出文件中包含明文 API Key</strong>
+          <strong className="warn-inline">导出文件中包含明文 API Key 与 WebDAV 密码</strong>
           ，请注意保管，勿随意分享。
         </p>
         <div className="block-actions">

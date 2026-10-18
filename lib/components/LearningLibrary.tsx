@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Eye, EyeOff, RotateCcw, Shuffle, Trash2, Upload, Download, Volume2, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Eye, EyeOff, RefreshCw, RotateCcw, Shuffle, Trash2, Upload, Download, Volume2, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import type { LearningRecord, LearningEdits } from '../types'
 import { sendMessage } from '../messaging'
+import { getSettings } from '../settings'
 import { isTtsSupported, speak } from '../tts'
 import { ContextBlock } from './ContextBlock'
 import { LearningDetails, LearningEditor } from './LearningDetails'
@@ -13,6 +14,8 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
   const [edits, setEdits] = useState<LearningEdits>({})
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
+  const [syncingWebDav, setSyncingWebDav] = useState(false)
+  const [webdavEnabled, setWebdavEnabled] = useState(false)
   const [maskMeanings, setMaskMeanings] = useState(false)
   const [reviewMode, setReviewMode] = useState(false)
   const [reviewIndex, setReviewIndex] = useState(0)
@@ -29,7 +32,40 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
 
   useEffect(() => {
     void refresh()
+    void getSettings().then((s) => {
+      const enabled = Boolean(s.webdav?.enabled && s.webdav.url.trim())
+      setWebdavEnabled(enabled)
+      if (enabled && s.webdav.autoSync !== false) {
+        void sendMessage({ type: 'webdav-sync' }).then((res) => {
+          if (res.ok) setRecords(res.data.records)
+          else setStatus(`WebDAV 同步未完成：${res.error}`)
+        })
+      }
+    }).catch(() => {})
   }, [])
+
+  const onSyncWebDav = async () => {
+    if (syncingWebDav || busy) return
+    setSyncingWebDav(true)
+    setStatus('正在与 WebDAV 云端同步…')
+    try {
+      const res = await sendMessage({ type: 'webdav-sync', payload: { forcePush: true } })
+      if (res.ok) {
+        setRecords(res.data.records)
+        const { added, updated, removed, total } = res.data
+        const parts = [
+          added > 0 ? `新增 ${added} 条` : '',
+          updated > 0 ? `更新 ${updated} 条` : '',
+          removed > 0 ? `删除 ${removed} 条` : '',
+        ].filter(Boolean).join('，')
+        setStatus(parts ? `云端同步完成：${parts}（共 ${total} 条）。` : `云端同步完成，数据已是最新（共 ${total} 条）。`)
+      } else {
+        setStatus(res.error)
+      }
+    } finally {
+      setSyncingWebDav(false)
+    }
+  }
 
   const onSpeak = (text: string) => {
     if (!isTtsSupported() || !text) return
@@ -338,6 +374,18 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
             {maskMeanings ? <Eye size={12} /> : <EyeOff size={12} />}
             {maskMeanings ? '显示释义' : '遮挡释义'}
           </button>
+          {webdavEnabled && (
+            <button
+              type="button"
+              className="sp-btn-subtle sp-btn-compact"
+              disabled={syncingWebDav || busy}
+              onClick={() => void onSyncWebDav()}
+              title="立即与 WebDAV 云端同步单词本"
+            >
+              <RefreshCw size={12} />
+              {syncingWebDav ? '同步中' : '同步'}
+            </button>
+          )}
           <button
             type="button"
             className="sp-btn-subtle sp-btn-compact"
@@ -465,6 +513,17 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
           <strong>还没有收藏的词条</strong>
           <span>查词后点击“存入单词本”，即可保存词条与当时出现的原句语境。</span>
           <div className="sp-state-actions">
+            {webdavEnabled && (
+              <button
+                type="button"
+                className="sp-btn-save"
+                disabled={syncingWebDav || busy}
+                onClick={() => void onSyncWebDav()}
+              >
+                <RefreshCw size={12} />
+                {syncingWebDav ? '正在从云端同步…' : '从 WebDAV 同步'}
+              </button>
+            )}
             <button type="button" className="sp-btn-subtle" onClick={() => fileInputRef.current?.click()}>
               导入备份文件
             </button>

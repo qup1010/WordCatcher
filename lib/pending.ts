@@ -40,23 +40,27 @@ export async function pendingCount(): Promise<number> {
   return (await readPending()).length
 }
 
-/** 同一语境保留最新待同步版本。 */
+function queueIdentity(card: CapturedCard): string {
+  return card.recordId ? `id:${card.recordId}` : `context:${contextKey(card)}`
+}
+
+/** 同一记录只保留最新待同步版本；不同 ID 即使语境相同也各自排队。 */
 export function enqueue(card: CapturedCard): Promise<number> {
   return mutate(async () => {
-  const queue = await readPending()
-  const key = contextKey(card)
+    const queue = await readPending()
+    const key = queueIdentity(card)
 
-  const existing = queue.findIndex(c => contextKey(c) === key)
-  if (existing >= 0) {
-    queue[existing] = card
-    await storage.setItem(PENDING_KEY, queue)
-    return queue.length
-  }
+    const existing = queue.findIndex(c => queueIdentity(c) === key)
+    if (existing >= 0) {
+      queue[existing] = card
+      await storage.setItem(PENDING_KEY, queue)
+      return queue.length
+    }
 
-  // 超上限时丢最老的：新划到的词比几天前那批更可能还想要
-  const next = [...queue, card].slice(-MAX_PENDING)
-  await storage.setItem(PENDING_KEY, next)
-  return next.length
+    // 超上限时丢最老的：新划到的词比几天前那批更可能还想要
+    const next = [...queue, card].slice(-MAX_PENDING)
+    await storage.setItem(PENDING_KEY, next)
+    return next.length
   })
 }
 
@@ -65,15 +69,17 @@ export async function clearPending(): Promise<void> {
 }
 
 /** 设置页按语境删除；未提供语境身份的旧调用保留按词删除的行为。 */
-export function removePending(word: string, key?: string): Promise<number> {
+export function removePending(word: string, key?: string, recordId?: string): Promise<number> {
   return mutate(async () => {
-  const target = word.trim().toLowerCase()
-  const queue = await readPending()
-  const next = queue.filter(c => key !== undefined ? contextKey(c) !== key : c.entry.word.trim().toLowerCase() !== target)
+    const target = word.trim().toLowerCase()
+    const queue = await readPending()
+    const next = queue.filter(c => recordId !== undefined
+      ? c.recordId !== recordId
+      : key !== undefined ? contextKey(c) !== key : c.entry.word.trim().toLowerCase() !== target)
 
-  if (next.length === queue.length) return queue.length
-  await storage.setItem(PENDING_KEY, next)
-  return next.length
+    if (next.length === queue.length) return queue.length
+    await storage.setItem(PENDING_KEY, next)
+    return next.length
   })
 }
 

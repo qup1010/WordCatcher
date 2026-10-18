@@ -1,4 +1,4 @@
-import { ExternalLink, Inbox, Laptop, Trash2 } from 'lucide-react'
+import { ExternalLink, Inbox, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { contextKey } from '@/lib/learning'
 import { sendMessage } from '@/lib/messaging'
@@ -24,7 +24,6 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [queue, setQueue] = useState<CapturedCard[]>([])
   const [queueStatus, setQueueStatus] = useState<Status>({ kind: 'idle' })
-  const [desktopAlive, setDesktopAlive] = useState<boolean | null>(null)
 
   const ankiEnabled = s.anki.enabled !== false
 
@@ -34,9 +33,6 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
   const refreshIntegrations = () => {
     void sendMessage({ type: 'pending-list' }).then((res) => {
       if (res.ok) setQueue(res.data.cards)
-    })
-    void sendMessage({ type: 'check-desktop-bridge' }).then((res) => {
-      if (res.ok) setDesktopAlive(res.data.alive)
     })
   }
 
@@ -87,7 +83,11 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
   }
 
   const onRemove = async (card: CapturedCard) => {
-    const res = await sendMessage({ type: 'remove-pending', payload: { word: card.entry.word, contextKey: contextKey(card) } })
+    const res = await sendMessage({ type: 'remove-pending', payload: {
+      word: card.entry.word,
+      contextKey: contextKey(card),
+      recordId: card.recordId,
+    } })
     if (res.ok) refreshIntegrations()
   }
 
@@ -103,44 +103,9 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
     <Section
       id="sec-anki"
       index={5}
-      title="外部拓展联动（可选）"
-      intro="生词默认保存在插件内置的「单词本」中并支持直接复习。如果你同时使用 Windows 桌面版或 Anki，可按需开启以下联动。"
+      title="Anki 制卡（可选）"
+      intro="生词保存在单词本中，可按需制作 Anki 卡片。插件与桌面端的词库同步统一在「数据与单词本」中配置 WebDAV。"
     >
-      {/* ── Windows 桌面版联动 ── */}
-      <div className="block">
-        <div className="block-head">
-          <Laptop size={14} className="inline-icon" />
-          <strong>Windows 桌面端联动</strong>
-          {desktopAlive !== null && (
-            <StatusChip ok={desktopAlive} okText="桌面端在线" badText="未运行（可选）" />
-          )}
-        </div>
-        <p className="block-hint">
-          开启后，在网页中存入单词本的词条会自动同步至正在运行的 Word Catcher 桌面端生词库。
-        </p>
-        <div className="field" style={{ marginTop: 12 }}>
-          <span>自动同步至桌面端</span>
-          <Switch
-            checked={s.desktopBridge?.enabled ?? true}
-            onChange={enabled => onChange({
-              ...s,
-              desktopBridge: { ...s.desktopBridge, enabled },
-            })}
-          />
-        </div>
-        <label className="field" style={{ marginTop: 10 }}>
-          <span>本地桥接地址</span>
-          <input
-            value={s.desktopBridge?.url ?? 'http://127.0.0.1:18765'}
-            placeholder="http://127.0.0.1:18765"
-            onChange={e => onChange({
-              ...s,
-              desktopBridge: { ...s.desktopBridge, url: e.target.value },
-            })}
-          />
-        </label>
-      </div>
-
       {/* ── Anki 制卡拓展 ── */}
       <div className="block">
         <div className="block-head">

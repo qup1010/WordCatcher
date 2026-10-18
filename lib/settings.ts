@@ -59,7 +59,7 @@ export function normalizeSettings(raw: unknown): Settings {
   if (!raw || typeof raw !== 'object') return DEFAULT_SETTINGS
 
   const r = raw as Record<string, unknown>
-  const section = <K extends 'anki' | 'desktopBridge' | 'tts' | 'mt' | 'dict'>(key: K) => ({
+  const section = <K extends 'anki' | 'webdav' | 'tts' | 'mt' | 'dict'>(key: K) => ({
     ...(DEFAULT_SETTINGS[key] as object),
     ...((r[key] as object | undefined) ?? {}),
   })
@@ -80,6 +80,21 @@ export function normalizeSettings(raw: unknown): Settings {
       : {}),
   }
 
+  const desktopWebDav = (r.WebDav && typeof r.WebDav === 'object' ? r.WebDav : null) as Record<string, unknown> | null
+  const webdavSection = {
+    ...section('webdav'),
+    ...(desktopWebDav
+      ? {
+          ...(typeof desktopWebDav.Enabled === 'boolean' ? { enabled: desktopWebDav.Enabled } : {}),
+          ...(typeof desktopWebDav.Url === 'string' ? { url: desktopWebDav.Url } : {}),
+          ...(typeof desktopWebDav.Username === 'string' ? { username: desktopWebDav.Username } : {}),
+          ...(typeof desktopWebDav.Password === 'string' ? { password: desktopWebDav.Password } : {}),
+          ...(typeof desktopWebDav.RemotePath === 'string' ? { remotePath: desktopWebDav.RemotePath } : {}),
+          ...(typeof desktopWebDav.AutoSync === 'boolean' ? { autoSync: desktopWebDav.AutoSync } : {}),
+        }
+      : {}),
+  }
+
   const aiSource = r.ai ?? (Array.isArray(r.TranslationProfiles)
     ? {
         profiles: r.TranslationProfiles,
@@ -91,7 +106,7 @@ export function normalizeSettings(raw: unknown): Settings {
     ai: normalizeAi(aiSource),
     dict: section('dict'),
     anki: ankiSection,
-    desktopBridge: section('desktopBridge'),
+    webdav: webdavSection,
     tts: section('tts'),
     mt: section('mt'),
     explainLanguage: r.explainLanguage ?? r.ExplainLanguage ?? DEFAULT_SETTINGS.explainLanguage,
@@ -128,4 +143,9 @@ export function watchSettings(cb: (s: Settings) => void): () => void {
 export function isAiConfigured(s: Settings): boolean {
   const p = activeAiProfile(s)
   return p.apiKey.trim().length > 0 && p.model.trim().length > 0
+}
+
+/** WebDAV 是否已配置地址并开启 */
+export function isWebDavConfigured(s: Settings): boolean {
+  return Boolean(s.webdav?.enabled && s.webdav.url.trim().length > 0)
 }

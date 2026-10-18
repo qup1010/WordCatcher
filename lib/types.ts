@@ -7,7 +7,40 @@ import { z } from 'zod'
  * 一旦交给 AI 复述，挖空时目标词就可能和句子对不上。
  */
 export interface LearningEdits { definition?: string, contextTranslation?: string, note?: string }
-export interface LearningRecord { id: string, card: CapturedCard, edits?: LearningEdits, savedAt: number, revision?: number, syncedAt?: number, syncError?: string }
+
+export interface LearningWordMeta {
+  id?: string
+  displayWord: string
+  reading?: string
+  partOfSpeech?: string
+  definition: string
+  memoryHook?: string
+  updatedAt?: number
+  deletedAt?: number
+}
+
+export interface LearningRecord {
+  id: string
+  card: CapturedCard
+  edits?: LearningEdits
+  savedAt: number
+  updatedAt?: number
+  deletedAt?: number
+  revision?: number
+  versionVector?: Record<string, number>
+  syncedAt?: number
+  syncError?: string
+  wordMeta?: LearningWordMeta
+}
+
+export interface WebDavSyncState {
+  lastSyncedAt?: number
+  lastError?: string
+  added?: number
+  updated?: number
+  removed?: number
+  total?: number
+}
 
 export const wordEntrySchema = z.object({
   word: z
@@ -55,6 +88,8 @@ export interface CapturedCard {
   sentenceOffset: number
   pageUrl: string
   pageTitle: string
+  sourceProcess?: string
+  lookupSource?: string
   createdAt: number
 }
 
@@ -125,13 +160,21 @@ export const settingsSchema = z.object({
     /** 是否在卡片正面把原句里的目标词挖空 */
     clozeContext: z.boolean().default(true),
   }),
-  /** 与 Windows 桌面版本地桥接联动配置 */
-  desktopBridge: z.object({
-    enabled: z.boolean().default(true),
-    url: z.string().default('http://127.0.0.1:18765'),
+  /** WebDAV 单词本多端云同步配置 */
+  webdav: z.object({
+    enabled: z.boolean().default(false),
+    url: z.string().default(''),
+    username: z.string().default(''),
+    password: z.string().default(''),
+    remotePath: z.string().default('WordCatcher/vocabulary-sync.json'),
+    autoSync: z.boolean().default(true),
   }).default({
-    enabled: true,
-    url: 'http://127.0.0.1:18765',
+    enabled: false,
+    url: '',
+    username: '',
+    password: '',
+    remotePath: 'WordCatcher/vocabulary-sync.json',
+    autoSync: true,
   }),
   tts: z.object({
     enabled: z.boolean().default(true),
@@ -161,7 +204,7 @@ export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({
   ai: {},
   dict: {},
   anki: {},
-  desktopBridge: {},
+  webdav: {},
   tts: {},
   mt: {},
 })
