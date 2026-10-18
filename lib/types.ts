@@ -184,9 +184,11 @@ export const settingsSchema = z.object({
     /** 是否智能检测划选文本语种以匹配发音 */
     autoDetect: z.boolean().default(true),
   }),
-  /** 快速翻译（机器翻译，免费免配置）。默认微软：谷歌被墙的网络下也能用 */
+  /** 快速翻译（机器翻译，免费免配置）与原句手动翻译引擎配置 */
   mt: z.object({
     provider: z.enum(['microsoft', 'google']).default('microsoft'),
+    /** 手动点击「翻译原句」时使用的服务：mt = 在线快译；ai = AI 语境译句 */
+    sentenceMode: z.enum(['mt', 'ai']).default('mt'),
   }),
   /** icon = 先显示胶囊按钮；quick = 划词直接快速翻译；ai/auto = 划词直接 AI 释义 */
   triggerMode: z.enum(['icon', 'quick', 'ai', 'auto']).default('icon'),

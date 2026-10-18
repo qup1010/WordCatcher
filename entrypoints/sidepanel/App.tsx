@@ -459,6 +459,11 @@ export default function App() {
       selection={sourceMeta?.selection || entry.word}
       offset={resolveOffset(currentSentence || sourceMeta?.selection || entry.word, sourceMeta?.selection || entry.word, sourceMeta?.sentenceOffset ?? -1)}
       translation={(edits.contextTranslation ?? entry.contextTranslation)?.trim() !== (edits.definition ?? entry.definition)?.trim() ? edits.contextTranslation ?? entry.contextTranslation : undefined}
+      onTranslated={(t) => {
+        setEntry(prev => prev ? { ...prev, contextTranslation: t } : prev)
+        setEdits(prev => ({ ...prev, contextTranslation: t }))
+        setSaveState('idle')
+      }}
     />
   ) : null
   const cleanReading = entry?.reading?.replace(/^\/+|\/+$/g, '')
@@ -670,7 +675,7 @@ export default function App() {
                 </div>
               )}
 
-              {!loading && <LearningEditor entry={entry} edits={edits} onChange={value => { setEdits(value); setSaveState('idle') }} />}
+              {!loading && <LearningEditor entry={entry} sentence={currentSentence} selection={sourceMeta?.selection || entry.word} edits={edits} onChange={value => { setEdits(value); setSaveState('idle') }} />}
 
               {loading && (
                 <div className="sp-progress" role="status">

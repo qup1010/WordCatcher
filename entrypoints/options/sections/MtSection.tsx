@@ -23,6 +23,19 @@ export function MtSection({ s, onChange }: SectionProps) {
         />
       </div>
       <p className="hint">首选服务连接失败时，会自动尝试另一家翻译服务。</p>
+
+      <div className="field" style={{ marginTop: 14 }}>
+        <span>原句翻译选用服务</span>
+        <Segmented
+          value={s.mt.sentenceMode ?? 'mt'}
+          options={[
+            { value: 'mt', label: '在线快译（微软/谷歌）' },
+            { value: 'ai', label: 'AI 语境译句' },
+          ]}
+          onChange={sentenceMode => onChange({ ...s, mt: { ...s.mt, sentenceMode } })}
+        />
+      </div>
+      <p className="hint">原句默认不自动翻译；当点击原句右上角「翻译原句」按钮时，将调用此处选定的服务。</p>
     </Section>
   )
 }

@@ -46,6 +46,7 @@ export interface ActiveLookupSnapshot {
 
 export type Request =
   | { type: 'quick-translate', payload: { text: string, context?: LookupContextPayload } }
+  | { type: 'translate-sentence', payload: { sentence: string, selection?: string } }
   | { type: 'save-card', payload: CapturedCard }
   | { type: 'library-list' }
   | { type: 'library-update', payload: { id: string, edits: LearningEdits } }
@@ -82,13 +83,16 @@ export type Request =
 
 export interface ResponseMap {
   'quick-translate': QuickLookupData
+  'translate-sentence': {
+    translation: string
+    mode: 'mt' | 'ai'
+  }
   'save-card': {
     noteId: number | null
     queued: boolean
     pending?: number
     recordId?: string
     syncError?: string
-    syncedToDesktop?: boolean
   }
   'library-list': LearningRecord[]
   'library-update': LearningRecord
