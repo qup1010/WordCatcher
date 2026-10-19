@@ -95,6 +95,16 @@ export function normalizeSettings(raw: unknown): Settings {
       : {}),
   }
 
+  const desktopSentenceMode = typeof r.SentenceTranslateMode === 'string'
+    ? r.SentenceTranslateMode.toLowerCase()
+    : undefined
+  const mtSection = {
+    ...section('mt'),
+    ...(desktopSentenceMode === 'ai' || desktopSentenceMode === 'mt'
+      ? { sentenceMode: desktopSentenceMode }
+      : {}),
+  }
+
   const aiSource = r.ai ?? (Array.isArray(r.TranslationProfiles)
     ? {
         profiles: r.TranslationProfiles,
@@ -108,7 +118,7 @@ export function normalizeSettings(raw: unknown): Settings {
     anki: ankiSection,
     webdav: webdavSection,
     tts: section('tts'),
-    mt: section('mt'),
+    mt: mtSection,
     explainLanguage: r.explainLanguage ?? r.ExplainLanguage ?? DEFAULT_SETTINGS.explainLanguage,
     triggerMode: r.triggerMode ?? DEFAULT_SETTINGS.triggerMode,
     doubleClickLookup: typeof r.doubleClickLookup === 'boolean' ? r.doubleClickLookup : DEFAULT_SETTINGS.doubleClickLookup,

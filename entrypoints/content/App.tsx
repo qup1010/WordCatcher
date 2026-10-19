@@ -405,6 +405,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const [fixedPos, setFixedPos] = useState<{ left: number, top: number } | null>(null)
   const [dragOffset, setDragOffset] = useState<{ x: number, y: number }>({ x: 0, y: 0 })
   const [learningEdits, setLearningEdits] = useState<LearningEdits>({})
+  const [quickContextTrans, setQuickContextTrans] = useState<string>('')
   const [overrideDef, setOverrideDef] = useState<string | null>(null)
   const [sidePanelHint, setSidePanelHint] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -444,6 +445,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     setFixedPos(null)
     setDragOffset({ x: 0, y: 0 })
     setOverrideDef(null)
+    setQuickContextTrans('')
   }, [])
 
   const togglePin = useCallback(() => {
@@ -545,6 +547,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const quickLookup = useCallback(async (ctx: SelectionContext) => {
     setOverrideDef(null)
     setLearningEdits({})
+    setQuickContextTrans('')
     setPhase({ kind: 'quick-loading' })
     setExpandHook(false)
     const res = await sendMessage({
@@ -581,7 +584,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               reading: phase.dict.reading || '',
               partOfSpeech: phase.dict.primaryPos || '',
               definition: phase.dict.coreMeanings.join('； '),
-              contextTranslation: '',
+              contextTranslation: quickContextTrans,
               memoryHook: phase.dict.memoryHook,
             }
           : undefined
@@ -697,7 +700,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         reading: d.reading,
         partOfSpeech: d.primaryPos || '',
         definition: d.coreMeanings.join('；'),
-        contextTranslation: '',
+        contextTranslation: quickContextTrans,
         memoryHook: d.memoryHook,
       })
       return
@@ -715,9 +718,9 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       reading: '',
       partOfSpeech: pos,
       definition,
-      contextTranslation: '',
+      contextTranslation: quickContextTrans,
     })
-  }, [phase, anchor, saveCard])
+  }, [phase, anchor, saveCard, quickContextTrans])
 
   // 出结果就顺手查一次重，让「保存」在用户读完释义之前就变成「已保存」
   const dupeWord = phase.kind === 'result'
@@ -790,6 +793,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         setSave({ kind: 'idle' })
         setOverrideDef(null)
         setLearningEdits({})
+        setQuickContextTrans('')
         setExpandHook(false)
 
         // 联动广播给侧边栏（如果已开）
@@ -1075,7 +1079,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               <div className="wc-quick-body">
                 <DictionaryView key={phase.dict.headword} result={phase.dict} context={
                   anchor.ctx.sentence && anchor.ctx.sentence !== anchor.ctx.selection
-                    ? <ContextBlock key={anchor.ctx.sentence} sentence={anchor.ctx.sentence} selection={anchor.ctx.selection} offset={anchor.ctx.offset} /> : undefined
+                    ? <ContextBlock key={anchor.ctx.sentence} sentence={anchor.ctx.sentence} selection={anchor.ctx.selection} offset={anchor.ctx.offset} translation={quickContextTrans || undefined} onTranslated={setQuickContextTrans} /> : undefined
                 } />
 
                 {phase.dict.memoryHook && (
@@ -1112,7 +1116,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 <div className={`wc-def ${isLongText ? 'wc-def-long' : ''}`}>
                   {phase.translation}
                 </div>
-                <ContextBlock key={anchor.ctx.sentence} sentence={anchor.ctx.sentence || anchor.ctx.selection} selection={anchor.ctx.selection} offset={anchor.ctx.offset} />
+                <ContextBlock key={anchor.ctx.sentence} sentence={anchor.ctx.sentence || anchor.ctx.selection} selection={anchor.ctx.selection} offset={anchor.ctx.offset} translation={quickContextTrans || undefined} onTranslated={setQuickContextTrans} />
                 {!isLongText && phase.dictionary && phase.dictionary.length > 0 && (
                   <div className="wc-dict">
                     {phase.dictionary.map(entry => (
@@ -1275,7 +1279,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               onEditDefinition={value => { setOverrideDef(value); setSave({ kind: 'idle' }) }}
             />
 
-            <LearningEditor entry={phase.entry} edits={{ ...learningEdits, ...(overrideDef !== null ? { definition: overrideDef } : {}) }} onChange={value => { setLearningEdits(value); setOverrideDef(value.definition ?? null); setSave({ kind: 'idle' }) }} />
+            <LearningEditor entry={phase.entry} sentence={anchor.ctx.sentence} selection={anchor.ctx.selection} edits={{ ...learningEdits, ...(overrideDef !== null ? { definition: overrideDef } : {}) }} onChange={value => { setLearningEdits(value); setOverrideDef(value.definition ?? null); setSave({ kind: 'idle' }) }} />
             <div className="wc-actions">
               <button
                 type="button"

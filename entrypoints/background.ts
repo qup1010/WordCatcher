@@ -2,7 +2,7 @@ import { contextKey, saveLearning, readLearning, updateLearning, removeLearning,
 import { WebDavError, getWebDavSyncState, syncLearningWithWebDav, testWebDavConnection } from '@/lib/webdav'
 import { browser, defineBackground } from '#imports'
 import type { Browser } from 'wxt/browser'
-import { AiError, PREVIEW_SAMPLE, listModels, streamEntry, testConnection } from '@/lib/ai'
+import { AiError, PREVIEW_SAMPLE, listModels, streamEntry, testConnection, translateSentenceWithAi } from '@/lib/ai'
 import {
   AnkiError,
   addNote,
@@ -38,10 +38,12 @@ import {
   readHistory,
   removeHistory,
 } from '@/lib/history'
-import { getSettings, isAiConfigured } from '@/lib/settings'
+import { getSettings, isAiConfigured, watchSettings } from '@/lib/settings'
 
 let lastActiveLookup: ActiveLookupSnapshot | null = null
 let webdavDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const sentenceTransCache = new Map<string, { translation: string, mode: 'mt' | 'ai' }>()
+let sentenceTransCacheVersion = 0
 
 function scheduleWebDavAutoSync(forcePush = true): void {
   if (webdavDebounceTimer) clearTimeout(webdavDebounceTimer)
@@ -56,6 +58,7 @@ function scheduleWebDavAutoSync(forcePush = true): void {
 }
 
 async function handle(req: Request, sender?: Browser.runtime.MessageSender): Promise<Result<unknown>> {
+  const requestCacheVersion = sentenceTransCacheVersion
   const settings = await getSettings()
 
   switch (req.type) {
@@ -185,16 +188,53 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
       return { ok: true, data: { mode: 'mt', ...result } }
     }
 
+    case 'translate-sentence': {
+      const rawSentence = req.payload.sentence.trim()
+      if (!rawSentence) {
+        throw new Error('原句内容为空，无法翻译。')
+      }
+      const mode: 'mt' | 'ai' = settings.mt.sentenceMode === 'ai' ? 'ai' : 'mt'
+      const key = JSON.stringify([
+        mode,
+        settings.explainLanguage,
+        mode === 'mt' ? settings.mt.provider : settings.ai.activeId,
+        rawSentence,
+        req.payload.selection ?? '',
+      ])
+      const cached = requestCacheVersion === sentenceTransCacheVersion ? sentenceTransCache.get(key) : undefined
+      if (cached) {
+        return { ok: true, data: cached }
+      }
+
+      let translation: string
+      if (mode === 'ai') {
+        translation = await translateSentenceWithAi({
+          sentence: rawSentence,
+          selection: req.payload.selection,
+          settings,
+        })
+      } else {
+        const mtRes = await quickTranslate(rawSentence, {
+          provider: settings.mt.provider,
+          explainLanguage: settings.explainLanguage,
+        })
+        translation = mtRes.translation
+      }
+
+      const out = { translation, mode }
+      if (requestCacheVersion === sentenceTransCacheVersion) {
+        if (sentenceTransCache.size >= 100) {
+          const firstKey = sentenceTransCache.keys().next().value
+          if (firstKey !== undefined) sentenceTransCache.delete(firstKey)
+        }
+        sentenceTransCache.set(key, out)
+      }
+      return { ok: true, data: out }
+    }
+
     case 'save-card': {
       const record = await saveLearning(req.payload)
       const card = effectiveCard(record)
-
-      if (!card.entry.contextTranslation && card.sentence) {
-        try {
-          const mt = await quickTranslate(card.sentence, { provider: settings.mt.provider, explainLanguage: settings.explainLanguage })
-          card.entry.contextTranslation = mt.translation
-        } catch { /* 原始学习记录已保存，补译失败不影响收藏。 */ }
-      }
       if (settings.webdav?.enabled && settings.webdav.autoSync && settings.webdav.url.trim()) {
         scheduleWebDavAutoSync(true)
       }
@@ -299,8 +339,9 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     }
 
     case 'clear-cache': {
-      const cleared = cacheSize()
+      const cleared = cacheSize() + sentenceTransCache.size
       clearCache()
+      sentenceTransCache.clear()
       return { ok: true, data: { cleared } }
     }
 
@@ -543,6 +584,10 @@ function handleEntryStream(port: Browser.runtime.Port): void {
 }
 
 export default defineBackground(() => {
+  watchSettings(() => {
+    sentenceTransCacheVersion++
+    sentenceTransCache.clear()
+  })
   browser.runtime.onConnect.addListener((port) => {
     if (port.name === ENTRY_STREAM_PORT) handleEntryStream(port)
     else if (port.name === DICT_IMPORT_PORT) handleDictImportPort(port)

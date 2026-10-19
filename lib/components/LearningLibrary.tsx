@@ -12,6 +12,10 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<LearningRecord | null>(null)
   const [edits, setEdits] = useState<LearningEdits>({})
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+  const editsRef = useRef(edits)
+  editsRef.current = edits
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
   const [syncingWebDav, setSyncingWebDav] = useState(false)
@@ -92,6 +96,35 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
       }
     } finally {
       setBusy(false)
+    }
+  }
+
+  const onContextTranslated = async (translation: string) => {
+    const current = selectedRef.current
+    if (!current) return
+    const recordId = current.id
+    const currentEdits = editsRef.current
+    const nextEdits: LearningEdits = {
+      ...currentEdits,
+      definition: currentEdits.definition ?? current.card.entry.definition,
+      contextTranslation: translation,
+    }
+    editsRef.current = nextEdits
+    setEdits(nextEdits)
+    try {
+      const res = await sendMessage({
+        type: 'library-update',
+        payload: { id: recordId, edits: nextEdits },
+      })
+      if (!res.ok) throw new Error(res.error)
+      if (selectedRef.current?.id !== recordId) return
+      setSelected(res.data)
+      setStatus('原句翻译已生成并保存。')
+      await refresh()
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : '未知错误'
+      setStatus('译文已生成，但保存失败：' + reason)
+      throw error
     }
   }
 
@@ -454,7 +487,8 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
             sentence={selected.card.sentence}
             selection={selected.card.selection}
             offset={selected.card.sentenceOffset}
-            translation={selected.edits?.contextTranslation ?? selected.card.entry.contextTranslation}
+            translation={edits.contextTranslation ?? selected.edits?.contextTranslation ?? selected.card.entry.contextTranslation}
+            onTranslated={onContextTranslated}
           />
 
           <LearningDetails entry={selected.card.entry} note={selected.edits?.note} />
@@ -482,7 +516,17 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
             </span>
           </div>
 
-          <LearningEditor entry={selected.card.entry} edits={edits} onChange={setEdits} />
+          <LearningEditor
+            entry={selected.card.entry}
+            edits={edits}
+            sentence={selected.card.sentence}
+            selection={selected.card.selection}
+            recordId={selected.id}
+            onChange={next => {
+              editsRef.current = next
+              setEdits(next)
+            }}
+          />
 
           <div className="sp-card-actions">
             <button type="button" className="sp-btn-save" disabled={busy} onClick={() => void save()}>

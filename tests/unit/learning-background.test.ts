@@ -11,7 +11,8 @@ import startBackground from '../../entrypoints/background'
 const mock = vi.hoisted(() => ({
   message: null as ((req: unknown, sender: unknown, reply: (value: unknown) => void) => boolean) | null,
   connect: null as ((port: unknown) => void) | null,
-  stream: vi.fn(), addNote: vi.fn(),
+  stream: vi.fn(), addNote: vi.fn(), quickTranslate: vi.fn(),
+  settingsChanged: null as (() => void) | null,
 }))
 vi.mock('#imports', async () => {
   const actual = await import('../helpers/wxt-imports-stub')
@@ -23,10 +24,15 @@ vi.mock('#imports', async () => {
 vi.mock('../../lib/settings', () => ({
   getSettings: async () => ({ ...DEFAULT_SETTINGS, dict: { ...DEFAULT_SETTINGS.dict, enabled: false } }),
   isAiConfigured: () => true,
+  watchSettings: (callback: () => void) => { mock.settingsChanged = callback; return () => {} },
   activeAiProfile: () => DEFAULT_SETTINGS.ai.profiles[0],
 }))
 vi.mock('../../lib/ai', async importOriginal => ({ ...await importOriginal<object>(), streamEntry: mock.stream }))
 vi.mock('../../lib/anki', async importOriginal => ({ ...await importOriginal<object>(), addNote: mock.addNote }))
+vi.mock('../../lib/machine-translate', async importOriginal => ({
+  ...await importOriginal<object>(),
+  quickTranslate: mock.quickTranslate,
+}))
 
 const entry: WordEntry = { word: 'bank', reading: '', partOfSpeech: 'n.', definition: '河岸', contextTranslation: '我们坐在河岸边。',
   inputKind: 'word', expression: 'bank', generation: { model: 'test', promptVersion: 'learning-v1', generatedAt: '2026-10-07T00:00:00Z' } }
@@ -46,11 +52,39 @@ function port() {
   return { value, start: (req: unknown = context) => receive(req), cancel: () => disconnect() }
 }
 beforeEach(() => {
-  __resetStorage(); clearCache(); mock.stream.mockReset(); mock.addNote.mockReset()
+  __resetStorage(); clearCache(); mock.stream.mockReset(); mock.addNote.mockReset(); mock.quickTranslate.mockReset(); mock.settingsChanged = null
   mock.stream.mockResolvedValue(structuredClone(entry)); mock.addNote.mockResolvedValue(12)
   ;(startBackground as unknown as () => void)()
 })
 describe('learning background entry points', () => {
+  it('clears sentence translation cache when settings change and ignores stale in-flight results', async () => {
+    mock.quickTranslate.mockResolvedValue({ translation: '当前译文' })
+    const requestTranslation = () => request({
+      type: 'translate-sentence',
+      payload: { sentence: 'The bank is closed.', selection: 'bank' },
+    })
+
+    const first = await requestTranslation()
+    const repeated = await requestTranslation()
+    expect(first.data.translation).toBe('当前译文')
+    expect(repeated.data.translation).toBe('当前译文')
+    expect(mock.quickTranslate).toHaveBeenCalledTimes(1)
+
+    mock.settingsChanged?.()
+    let finishOldRequest!: (value: { translation: string }) => void
+    mock.quickTranslate.mockImplementationOnce(() => new Promise(resolve => { finishOldRequest = resolve }))
+    const inFlight = requestTranslation()
+    await vi.waitFor(() => expect(mock.quickTranslate).toHaveBeenCalledTimes(2))
+    mock.settingsChanged?.()
+    finishOldRequest({ translation: '旧设置译文' })
+    await inFlight
+
+    mock.quickTranslate.mockResolvedValue({ translation: '新设置译文' })
+    const afterChange = await requestTranslation()
+    expect(afterChange.data.translation).toBe('新设置译文')
+    expect(mock.quickTranslate).toHaveBeenCalledTimes(3)
+  })
+
   it('saves locally and queues the same context when Anki is offline', async () => {
     mock.addNote.mockRejectedValue(new Error('Anki 未连接'))
     const reply = await request({ type: 'save-card', payload: { ...context, entry, createdAt: 1, edits: { definition: '我的河岸释义', note: '个人笔记' } } })

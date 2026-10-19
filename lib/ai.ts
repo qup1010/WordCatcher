@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { Output, generateText, streamText } from 'ai'
 import { TIMEOUT, isTimeout, timeout } from './net'
-import { activeAiProfile } from './settings'
+import { activeAiProfile, isAiConfigured } from './settings'
 import { type Settings, type WordEntry, wordEntrySchema } from './types'
 
 export const PROMPT_VERSION = 'learning-v1'
@@ -111,6 +111,44 @@ export async function testConnection(settings: Settings): Promise<string> {
     })
     return text.trim()
   } catch (err) {
+    throw new AiError(friendlyMessage(err))
+  }
+}
+
+/**
+ * 轻量级单句翻译：仅针对原句生成自然流畅的译文，不生成整套结构化卡片，响应更快、Token 消耗更低。
+ */
+export async function translateSentenceWithAi(params: {
+  sentence: string
+  selection?: string
+  settings: Settings
+  signal?: AbortSignal
+}): Promise<string> {
+  const { sentence, selection, settings } = params
+  if (!isAiConfigured(settings)) {
+    throw new AiError('尚未配置 AI 服务，请先在设置页填写 API Key 和模型名称，或在「快速翻译」设置中将原句翻译切换为在线快译。')
+  }
+  const profile = activeAiProfile(settings)
+  const targetHint = selection && selection.trim() && selection.trim() !== sentence.trim()
+    ? `句中重点关注的词或短语是 "${selection.trim()}"，请确保整句译文准确体现该词在当前上下文中的含义。`
+    : ''
+
+  try {
+    const { text } = await generateText({
+      model: buildProvider(settings)(profile.model.trim()),
+      system: `你是精准的语境翻译助手。请将用户提供的原句自然、准确地翻译为${settings.explainLanguage}。${targetHint}只输出整句译文本身，不要加引号、注释或多余解释。`,
+      prompt: sentence.trim(),
+      temperature: 0.2,
+      maxOutputTokens: 512,
+      abortSignal: params.signal ? AbortSignal.any([params.signal, timeout(TIMEOUT.aiGenerate)]) : timeout(TIMEOUT.aiGenerate),
+    })
+    const cleaned = text.trim()
+    if (!cleaned) {
+      throw new AiError('AI 未返回有效译文，请重试。')
+    }
+    return cleaned
+  } catch (err) {
+    if (err instanceof AiError) throw err
     throw new AiError(friendlyMessage(err))
   }
 }
