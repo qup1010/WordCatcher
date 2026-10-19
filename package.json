@@ -2,7 +2,7 @@
   "name": "word-catcher",
   "description": "网页查词、原句翻译与 AI 语境详解",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",
