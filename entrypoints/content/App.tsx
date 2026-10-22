@@ -751,10 +751,10 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     : saved
       ? '已保存'
       : queued
-        ? '已存入单词本'
+        ? '已存入生词库'
         : dupe === 'yes'
           ? '更新这条语境'
-          : '存入单词本'
+          : '存入生词库'
 
   // ── 选区监听 ──────────────────────────────────
   useEffect(() => {
@@ -806,15 +806,13 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
           setDragOffset({ x: 0, y: 0 })
         }
 
-        // 双击单词时：若开启了双击查词，跳过操作胶囊直接展开快速翻译
+        // 双击单词时：若开启了双击查词，跳过操作胶囊直接展开在线快译
         if (settings.doubleClickLookup && isDoubleClick) {
           void quickLookup(ctx)
           return
         }
 
-        if (settings.triggerMode === 'auto' || settings.triggerMode === 'ai') {
-          lookup(ctx)
-        } else if (settings.triggerMode === 'quick') {
+        if (settings.triggerMode === 'quick') {
           void quickLookup(ctx)
         } else {
           // 如果已被 Pin 住，直接更新内容，不退回操作胶囊
@@ -948,7 +946,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
           ref={panelRef}
           style={{ maxHeight: Math.min(pos.maxHeight, window.innerHeight - finalTop - 8) }}
           role="dialog"
-          aria-label={isLongText ? '快速翻译' : `「${anchor.ctx.selection}」的快速查词`}
+          aria-label={isLongText ? '在线快译' : `「${anchor.ctx.selection}」的快速查词`}
         >
           <div className="wc-fade" key={phase.kind} aria-live="polite">
             <div
@@ -1300,7 +1298,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               {saved && (
                 <span className="wc-note wc-note-ok">
                   <Check size={13} />
-                  <span>已加入单词本</span>
+                  <span>已加入生词库</span>
                 </span>
               )}
 
@@ -1311,7 +1309,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               {save.kind === 'queued' && (
                 <span className="wc-note wc-note-ok">
                   <Check size={13} />
-                  <span>已存入单词本</span>
+                  <span>已存入生词库</span>
                 </span>
               )}
 

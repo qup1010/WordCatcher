@@ -579,7 +579,7 @@ export default function App() {
               void refreshLibraryCount()
             }}
           >
-            单词本
+            生词库
           </button>
         </div>
       </header>
@@ -702,16 +702,16 @@ export default function App() {
                   {saveState === 'saved' && (
                     <>
                       <Check size={13} />
-                      已存入单词本
+                      已存入生词库
                     </>
                   )}
                   {saveState === 'queued' && (
                     <>
                       <Check size={13} />
-                      已存入单词本
+                      已存入生词库
                     </>
                   )}
-                  {saveState === 'idle' && (savedContext ? '更新这条语境' : '存入单词本')}
+                  {saveState === 'idle' && (savedContext ? '更新这条语境' : '存入生词库')}
                 </button>
 
                 <button
@@ -755,7 +755,7 @@ export default function App() {
                 <div className="sp-quick-card">
                   <div className="sp-quick-card-head">
                     <BookOpen size={14} className="sp-quick-icon" />
-                    <strong>单词本已收录 {libraryCount} 条语境</strong>
+                    <strong>生词库已收录 {libraryCount} 条语境</strong>
                   </div>
                   <p>随时查看收藏的原句与解析，或开启卡片自测复习。</p>
                   <button
@@ -763,7 +763,7 @@ export default function App() {
                     className="sp-btn-subtle sp-btn-compact"
                     onClick={() => setTab('library')}
                   >
-                    打开单词本与复习
+                    打开生词库与复习
                   </button>
                 </div>
               )}
@@ -898,7 +898,7 @@ export default function App() {
               <div className="sp-state">
                 <Search size={20} />
                 <strong>还没有查词记录</strong>
-                <span>查询过的词会保存在这里，方便再次查看和存入单词本。</span>
+                <span>查询过的词会保存在这里，方便再次查看和存入生词库。</span>
               </div>
             ) : null}
           </div>

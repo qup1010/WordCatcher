@@ -1,6 +1,7 @@
+import { webDavStatusLabel } from '../webdav'
 import { useEffect, useRef, useState } from 'react'
 import { Eye, EyeOff, RefreshCw, RotateCcw, Shuffle, Trash2, Upload, Download, Volume2, ChevronLeft, ChevronRight, X } from 'lucide-react'
-import type { LearningRecord, LearningEdits } from '../types'
+import type { LearningRecord, LearningEdits, WebDavSyncState } from '../types'
 import { sendMessage } from '../messaging'
 import { getSettings } from '../settings'
 import { isTtsSupported, speak } from '../tts'
@@ -19,6 +20,7 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
   const [syncingWebDav, setSyncingWebDav] = useState(false)
+  const [webdavState, setWebdavState] = useState<WebDavSyncState>({})
   const [webdavEnabled, setWebdavEnabled] = useState(false)
   const [maskMeanings, setMaskMeanings] = useState(false)
   const [reviewMode, setReviewMode] = useState(false)
@@ -46,6 +48,19 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
         })
       }
     }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    let disposed = false
+    const update = async () => {
+      const [state, settings] = await Promise.all([sendMessage({ type: 'webdav-status' }), getSettings()])
+      if (disposed) return
+      setWebdavEnabled(Boolean(settings.webdav.enabled))
+      if (state.ok) setWebdavState(state.data)
+    }
+    void update().catch(() => {})
+    const timer = setInterval(() => void update().catch(() => {}), 2000)
+    return () => { disposed = true; clearInterval(timer) }
   }, [])
 
   const onSyncWebDav = async () => {
@@ -175,7 +190,7 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
     a.download = 'word-catcher-learning.json'
     a.click()
     URL.revokeObjectURL(url)
-    setStatus('单词本备份已导出。')
+    setStatus('生词库备份已导出。')
   }
 
   const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -376,10 +391,10 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
   }
 
   return (
-    <section aria-label="单词本" className="learning-library">
+    <section aria-label="生词库" className="learning-library">
       <div className="learning-library-toolbar">
         <input
-          aria-label="搜索单词本"
+          aria-label="搜索生词库"
           placeholder="搜索单词、表达、原句或笔记"
           value={query}
           onChange={e => setQuery(e.target.value)}
@@ -407,16 +422,18 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
             {maskMeanings ? <Eye size={12} /> : <EyeOff size={12} />}
             {maskMeanings ? '显示释义' : '遮挡释义'}
           </button>
+          <span role="status" className="sp-muted">{webDavStatusLabel(webdavEnabled, webdavState)}</span>
+          {webdavState.conflict && <button type="button" className="sp-btn-subtle" onClick={() => void sendMessage({type:'open-options'})}>处理冲突</button>}
           {webdavEnabled && (
             <button
               type="button"
               className="sp-btn-subtle sp-btn-compact"
               disabled={syncingWebDav || busy}
               onClick={() => void onSyncWebDav()}
-              title="立即与 WebDAV 云端同步单词本"
+              title="立即与 WebDAV 云端同步生词库"
             >
               <RefreshCw size={12} />
-              {syncingWebDav ? '同步中' : '同步'}
+              {syncingWebDav ? '同步中' : '立即同步'}
             </button>
           )}
           <button
@@ -432,7 +449,7 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
             type="button"
             className="sp-btn-subtle sp-btn-compact"
             onClick={() => void exportRecords()}
-            title="导出单词本 JSON 备份"
+            title="导出生词库 JSON 备份"
           >
             <Download size={12} />
             导出
@@ -512,7 +529,7 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
               </a>
             )}
             <span className="learning-sync-status">
-              {selected.syncedAt ? '已同步至 Anki' : '已保存在本地单词本'}
+              {selected.syncedAt ? '已同步至 Anki' : '已保存在本地生词库'}
             </span>
           </div>
 
@@ -555,7 +572,7 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
       {records.length === 0 && (
         <div className="sp-state">
           <strong>还没有收藏的词条</strong>
-          <span>查词后点击“存入单词本”，即可保存词条与当时出现的原句语境。</span>
+          <span>查词后点击“存入生词库”，即可保存词条与当时出现的原句语境。</span>
           <div className="sp-state-actions">
             {webdavEnabled && (
               <button

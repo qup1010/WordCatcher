@@ -7,7 +7,6 @@ import { Combobox } from '../components/Combobox'
 import { SamplePreview } from '../components/SamplePreview'
 import { Section } from '../components/Section'
 import {
-  EXPLAIN_LANGUAGES,
   matchProviderPreset,
   PROVIDER_PRESETS,
   type ProviderPreset,
@@ -25,7 +24,7 @@ type TestResult =
 
 const PRESET_DEFAULT_MODELS = new Set(PROVIDER_PRESETS.map(p => p.model))
 
-export function AiSection({ s, onChange, flush }: SectionProps) {
+export function AiSection({ s, onChange }: SectionProps) {
   const [test, setTest] = useState<TestResult>({ kind: 'idle' })
   const [models, setModels] = useState<string[]>([])
   const [modelsStatus, setModelsStatus] = useState<Status>({ kind: 'idle' })
@@ -103,8 +102,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
 
   const onFetchModels = async () => {
     setModelsStatus({ kind: 'busy' })
-    await flush()
-    const res = await sendMessage({ type: 'list-models' })
+    const res = await sendMessage({ type: 'list-models', payload: { settings: s } })
     if (res.ok) {
       setModels(res.data.models)
       setModelsStatus({ kind: 'ok', text: `已获取 ${res.data.models.length} 个可用模型` })
@@ -116,9 +114,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
 
   const onTest = async () => {
     setTest({ kind: 'busy' })
-    await flush()
-
-    const res = await sendMessage({ type: 'test-ai' })
+    const res = await sendMessage({ type: 'test-ai', payload: { settings: s } })
     if (!res.ok) {
       setTest({ kind: 'err', text: res.error })
       return
@@ -133,8 +129,8 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
   return (
     <Section
       id="sec-ai"
-      index={3}
-      title="AI 语境详解"
+      index={2}
+      title="AI 详解"
       intro="结合原句语境解析词义、固定搭配与用法，并翻译整句。支持所有兼容 OpenAI 协议的服务商。"
     >
       <div className="profiles">
@@ -276,17 +272,6 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
       {modelsStatus.kind === 'ok' && <p className="hint hint-ok">{modelsStatus.text}</p>}
       {modelsStatus.kind === 'err' && <p className="hint hint-err">{modelsStatus.text}</p>}
 
-      <label className="field">
-        <span>释义语言</span>
-        <select
-          value={s.explainLanguage}
-          onChange={e => onChange({ ...s, explainLanguage: e.target.value })}
-        >
-          {EXPLAIN_LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
-      </label>
-      <p className="hint">同时用于 AI 语境详解与快速翻译的目标语言。</p>
-
       <div className="row">
         <button className="btn" onClick={() => void onTest()} disabled={test.kind === 'busy'}>
           {test.kind === 'busy' ? '正在生成示例释义…' : '测试连接并预览释义效果'}
@@ -303,7 +288,7 @@ export function AiSection({ s, onChange, flush }: SectionProps) {
       {test.kind === 'no-structured' && (
         <div className="result">
           <p className="warn">
-            接口已连通，但当前模型未能返回结构化 JSON 数据，AI 语境详解将无法正常工作。请更换支持结构化输出的模型。
+            接口已连通，但当前模型未能返回结构化 JSON 数据，AI 详解将无法正常工作。请更换支持结构化输出的模型。
           </p>
           {test.reply && (
             <>

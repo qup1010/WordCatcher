@@ -94,7 +94,7 @@ export function LearningEditor({
     onChange(next)
   }
 
-  const onTranslateSentence = async () => {
+  const onTranslateSentence = async (mode: 'mt' | 'ai' = 'mt') => {
     const targetSentence = sentence?.trim()
     if (!targetSentence || translating) return
     const requestIdentity = contextIdentity
@@ -107,7 +107,7 @@ export function LearningEditor({
     try {
       const res = await sendMessage({
         type: 'translate-sentence',
-        payload: { sentence: targetSentence, selection: selection?.trim() || entry.word },
+        payload: { sentence: targetSentence, selection: selection?.trim() || entry.word, mode },
       })
       if (!isCurrentRequest()) return
       if (!res.ok) {
@@ -164,7 +164,7 @@ export function LearningEditor({
               updateEdits({ ...editsRef.current, contextTranslation: e.target.value })
             }}
           />
-          {translationError && <div className="learning-translate-error" role="alert">{translationError}</div>}
+          {translationError && <div className="learning-translate-error" role="alert">{translationError}<button type="button" disabled={translating} onClick={() => void onTranslateSentence()}>重试在线快译</button><button type="button" disabled={translating} onClick={() => void onTranslateSentence('ai')}>改用 AI</button></div>}
         </label>
         <label>
           <span>个人笔记</span>

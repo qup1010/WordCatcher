@@ -269,29 +269,9 @@ export async function quickTranslate(
 ): Promise<QuickTranslation> {
   const codes = TARGET_CODES[opts.explainLanguage] ?? DEFAULT_TARGET
 
-  const order: MtProvider[] =
-    opts.provider === 'google' ? ['google', 'microsoft'] : ['microsoft', 'google']
-
-  let firstError: unknown
-  for (const provider of order) {
-    try {
-      if (provider === 'google') {
-        const g = await googleTranslate(text, codes.google)
-        return {
-          translation: g.translation,
-          provider: 'google',
-          fellBack: provider !== order[0],
-          dictionary: g.dictionary,
-        }
-      }
-
-      const translation = await microsoftTranslate(text, codes.microsoft)
-      return { translation, provider: 'microsoft', fellBack: provider !== order[0] }
-    } catch (err) {
-      if (provider === order[0]) firstError = err
-    }
+  if (opts.provider === 'google') {
+    const result = await googleTranslate(text, codes.google)
+    return { ...result, provider: 'google', fellBack: false }
   }
-
-  const detail = firstError instanceof Error ? firstError.message : String(firstError)
-  throw new MtError(`两家翻译服务都没能连上（${detail}），请检查网络。`)
+  return { translation: await microsoftTranslate(text, codes.microsoft), provider: 'microsoft', fellBack: false }
 }

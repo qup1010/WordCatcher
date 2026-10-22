@@ -1,5 +1,5 @@
 import { storage } from '#imports'
-import { exportSyncLearning, mergeLearningRecords, readLearning } from './learning'
+import { exportSyncLearning, mergeLearningRecords, readLearning, LearningConflictError, parseIncomingLearningRecords, resolveLearningConflict, stableSyncJson, syncRecordJson } from './learning'
 import { timeout } from './net'
 import type { Settings, WebDavSyncState } from './types'
 
@@ -136,9 +136,49 @@ async function ensureDirectories(target: ResolvedWebDavTarget, config: Settings[
   }
 }
 
-export async function getWebDavSyncState(): Promise<WebDavSyncState> {
-  const raw = await storage.getItem<unknown>(SYNC_STATE_KEY)
-  return raw && typeof raw === 'object' ? (raw as WebDavSyncState) : {}
+let syncingTarget: string | undefined
+
+function targetIdentity(config: Settings['webdav']): string {
+  return JSON.stringify([resolveWebDavTarget(config.url, config.remotePath).fileUrl, config.username.trim()])
+}
+
+async function snapshotHash(json: string): Promise<string> {
+  const records = parseIncomingLearningRecords(json, true).sort((a, b) => a.id.localeCompare(b.id))
+  const bytes = new TextEncoder().encode(stableSyncJson(records.map(r => JSON.parse(syncRecordJson(r)))))
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')
+}
+
+export async function getWebDavSyncState(config?: Settings['webdav']): Promise<WebDavSyncState> {
+  const raw = await storage.getItem<WebDavSyncState>(SYNC_STATE_KEY)
+  let target = raw?.target
+  if (config) {
+    if (!config.enabled || !config.url.trim()) return {}
+    try { target = targetIdentity(config) } catch { return { lastError: '请填写有效的 HTTPS WebDAV 地址。', failureKind: 'configuration' } }
+  }
+  const state = raw?.target === target ? raw ?? {} : {}
+  const currentHash = await snapshotHash(await exportSyncLearning())
+  return { ...state, isSyncing: Boolean(target && syncingTarget === target),
+    hasPendingChanges: currentHash !== state.verifiedHash,
+    hasVerifiedSnapshot: Boolean(state.verifiedHash && currentHash === state.verifiedHash) }
+}
+
+export function webDavStatusLabel(enabled: boolean, state: WebDavSyncState): string {
+  if (!enabled) return '未启用'
+  if (state.isSyncing) return '同步中'
+  if (state.conflict) return '有冲突'
+  if (state.lastError) return '同步失败'
+  return state.hasVerifiedSnapshot && !state.hasPendingChanges ? '已同步' : '待同步'
+}
+
+function failureKind(error: unknown): WebDavSyncState['failureKind'] {
+  if (error instanceof LearningConflictError) return 'conflict'
+  const message = error instanceof Error ? error.message : String(error)
+  if (/401|403|认证|权限不足/.test(message)) return 'authentication'
+  if (/412|其他设备更新/.test(message)) return 'conflict'
+  if (/格式|ETag|HTTPS|地址|记录不完整/.test(message)) return 'configuration'
+  if (error instanceof TypeError || /timeout|network|fetch|网络|超时/i.test(message)) return 'network'
+  return 'other'
 }
 
 async function saveWebDavSyncState(state: WebDavSyncState): Promise<void> {
@@ -204,10 +244,16 @@ export interface WebDavSyncResult {
  * 执行一次完整的 Pull -> Merge -> Push 双向同步。
  */
 export function syncLearningWithWebDav(config: Settings['webdav'], forcePush = false): Promise<WebDavSyncResult> {
-  return serializeSync(async () => {
-    const target = resolveWebDavTarget(config.url, config.remotePath)
+  return serializeSync(() => runSync(config, forcePush))
+}
 
+async function runSync(config: Settings['webdav'], forcePush: boolean): Promise<WebDavSyncResult> {
+    let identity: string | undefined
     try {
+      identity = targetIdentity(config)
+      const target = resolveWebDavTarget(config.url, config.remotePath)
+      syncingTarget = identity
+      let remoteHash: string | undefined
       const getRes = await fetch(target.fileUrl, {
         method: 'GET',
         headers: buildHeaders(config, { 'Cache-Control': 'no-cache' }),
@@ -230,6 +276,7 @@ export function syncLearningWithWebDav(config: Settings['webdav'], forcePush = f
         remoteEtag = getRes.headers.get('ETag')
         const remoteText = await getRes.text()
         if (remoteText.trim().length > 0) {
+          remoteHash = await snapshotHash(remoteText)
           const merged = await mergeLearningRecords(remoteText)
           added = merged.added
           updated = merged.updated
@@ -248,6 +295,9 @@ export function syncLearningWithWebDav(config: Settings['webdav'], forcePush = f
         throw new WebDavError(`拉取远端单词本失败（HTTP ${getRes.status}）。`)
       }
 
+      const payload = await exportSyncLearning()
+      const payloadHash = await snapshotHash(payload)
+      shouldPush = shouldPush || payloadHash !== remoteHash
       let pushed = false
       if (shouldPush) {
         if (!remoteMissing && (!remoteEtag || remoteEtag.startsWith('W/') || !remoteEtag.startsWith('"'))) {
@@ -257,7 +307,6 @@ export function syncLearningWithWebDav(config: Settings['webdav'], forcePush = f
           'Content-Type': 'application/json; charset=utf-8',
           ...(remoteMissing ? { 'If-None-Match': '*' } : { 'If-Match': remoteEtag! }),
         })
-        const payload = await exportSyncLearning()
         const putRes = await fetch(target.fileUrl, {
           method: 'PUT',
           headers: writeHeaders,
@@ -291,6 +340,8 @@ export function syncLearningWithWebDav(config: Settings['webdav'], forcePush = f
 
       const syncedAt = Date.now()
       await saveWebDavSyncState({
+        target: identity,
+        verifiedHash: payloadHash,
         lastSyncedAt: syncedAt,
         lastError: undefined,
         added,
@@ -302,13 +353,37 @@ export function syncLearningWithWebDav(config: Settings['webdav'], forcePush = f
       return { added, updated, removed, total, pushed, syncedAt }
     } catch (err) {
       const msg = err instanceof WebDavError ? err.message : (err instanceof Error ? err.message : String(err))
-      const prev = await getWebDavSyncState()
+      const stored = await storage.getItem<WebDavSyncState>(SYNC_STATE_KEY)
+      const prev = stored?.target === identity ? stored : {}
       await saveWebDavSyncState({
         ...prev,
+        target: identity,
         lastError: msg,
+        failureKind: failureKind(err),
+        conflict: err instanceof LearningConflictError ? err.conflict : undefined,
       })
       if (err instanceof WebDavError) throw err
       throw new WebDavError(`WebDAV 同步失败：${msg}`)
+    } finally { syncingTarget = undefined }
+}
+
+export function resolveWebDavConflict(config: Settings['webdav'], token: string, keepLocal: boolean): Promise<WebDavSyncResult> {
+  return serializeSync(async () => {
+    if (!config.enabled) throw new WebDavError('请先启用并保存 WebDAV 配置。')
+    const identity = targetIdentity(config)
+    const state = await storage.getItem<WebDavSyncState>(SYNC_STATE_KEY)
+    if (!state?.conflict || state.target !== identity || state.conflict.token !== token) {
+      throw new WebDavError('冲突或同步目标已变化，请重新同步并查看最新内容。')
     }
+    const target = resolveWebDavTarget(config.url, config.remotePath)
+    const response = await fetch(target.fileUrl, { method: 'GET', headers: buildHeaders(config, { 'Cache-Control': 'no-cache' }), signal: timeout(WEBDAV_TIMEOUT_MS) })
+    if (!response.ok) throw new WebDavError(`重新读取云端失败（HTTP ${response.status}），请重试。`)
+    const remote = parseIncomingLearningRecords(await response.text(), true).find(r => r.id === state.conflict!.recordId)
+    if (!remote || syncRecordJson(remote) !== syncRecordJson(state.conflict.remote)) {
+      throw new WebDavError('云端记录在查看冲突后又有修改，请重新同步并查看最新差异。')
+    }
+    await resolveLearningConflict(state.conflict, keepLocal)
+    await saveWebDavSyncState({ ...state, conflict: undefined, lastError: undefined, failureKind: undefined })
+    return runSync(config, true)
   })
 }

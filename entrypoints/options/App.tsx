@@ -15,14 +15,14 @@ import { MtSection } from './sections/MtSection'
 import { UxSection } from './sections/UxSection'
 
 const NAV_SECTIONS = [
-  { id: 'sec-ux', label: '划词与朗读', icon: Volume2 },
-  { id: 'sec-dict', label: '离线词典', icon: BookOpen },
-  { id: 'sec-mt', label: '快速翻译', icon: Zap },
-  { id: 'sec-ai', label: 'AI 语境详解', icon: Sparkles },
-  { id: 'sec-data', label: '数据与单词本', icon: Database },
-  { id: 'sec-anki', label: 'Anki 制卡', icon: Layers },
-  { id: 'sec-about', label: '关于与致谢', icon: Info },
+  { id: 'sec-mt', label: '查词与翻译', icon: BookOpen },
+  { id: 'sec-ai', label: 'AI 详解', icon: Sparkles },
+  { id: 'sec-data', label: '词库与同步', icon: Database },
+  { id: 'sec-anki', label: 'Anki', icon: Layers },
+  { id: 'sec-ux', label: '操作与显示', icon: Volume2 },
+  { id: 'sec-about', label: '关于', icon: Info },
 ] as const
+const connections = (s: Settings) => ({ ai: s.ai, webdav: s.webdav, anki: s.anki })
 
 /**
  * 设置页的外壳：只管配置的读写、自动保存和导航，
@@ -36,17 +36,22 @@ export default function App() {
   const [ankiAlive, setAnkiAlive] = useState<boolean | null>(null)
   const [dictMeta, setDictMeta] = useState<DictMeta | null>(null)
   const [activeNav, setActiveNav] = useState<string>(NAV_SECTIONS[0].id)
-  const firstRender = useRef(true)
+  const applied = useRef(DEFAULT_SETTINGS)
+  const desired = useRef(DEFAULT_SETTINGS)
+  const [savedConnections, setSavedConnections] = useState(connections(DEFAULT_SETTINGS))
   const writeQueue = useRef<Promise<void>>(Promise.resolve())
   const writeSequence = useRef(0)
 
   // 顺序写入，避免快速连续修改时较早的配置覆盖较新的配置。
   const persist = useCallback((next: Settings) => {
+    desired.current = next
     const sequence = ++writeSequence.current
     setSaveState('saving')
     const task = writeQueue.current.catch(() => {}).then(() => saveSettings(next))
     writeQueue.current = task
     void task.then(() => {
+      applied.current = next
+      setSavedConnections(connections(next))
       if (sequence === writeSequence.current) setSaveState('saved')
     }, () => {
       if (sequence === writeSequence.current) setSaveState('error')
@@ -62,18 +67,27 @@ export default function App() {
 
   useEffect(() => {
     void getSettings().then((v) => {
+      applied.current = v
+      desired.current = v
+      setSavedConnections(connections(v))
       setS(v)
       setLoaded(true)
     }).catch(() => setLoadError(true))
     refreshStatuses()
   }, [])
 
-  // 修改立即开始保存，取消等待窗口；保存结果只反馈最新一次修改。
+  const dirty = JSON.stringify(connections(s)) !== JSON.stringify(savedConnections)
+  const change = (next: Settings) => {
+    setS(next)
+    const preferences = { ...next, ...connections(desired.current) }
+    if (JSON.stringify(preferences) !== JSON.stringify(desired.current)) void persist(preferences).catch(() => {})
+  }
   useEffect(() => {
-    if (!loaded) return
-    if (firstRender.current) { firstRender.current = false; return }
-    void persist(s).catch(() => {})
-  }, [s, loaded, persist])
+    if (!dirty) return
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
 
   // 滚动时高亮侧边栏当前分区
   useEffect(() => {
@@ -93,7 +107,7 @@ export default function App() {
     return () => observer.disconnect()
   }, [loaded])
 
-  // 测试/拉取前先落盘，保证 background 用的是页面上正在填的值
+  // 仅在用户明确保存连接配置时提交当前草稿。
   const flush = useCallback(async () => {
     await persist(s)
   }, [s, persist])
@@ -107,7 +121,7 @@ export default function App() {
     {loadError && <button type="button" className="save-retry" onClick={() => window.location.reload()}>重新加载</button>}
   </div>
 
-  const sectionProps = { s, onChange: setS, flush }
+  const sectionProps = { s, onChange: change, flush, connectionsDirty: dirty }
 
   const appVersion = browser.runtime.getManifest?.()?.version || '0.1.1'
 
@@ -124,7 +138,7 @@ export default function App() {
             <span className="brand-reading">/wɜːd ˈkætʃə(r)/</span>
             <span className="brand-pos">n.</span>
           </div>
-          <p className="brand-def">网页划词、语境解析与生词本复习工具。</p>
+          <p className="brand-def">网页划词、语境解析与生词库复习工具。</p>
         </div>
 
         <nav aria-label="设置分区">
@@ -160,7 +174,7 @@ export default function App() {
               />
             </div>
             <div className="status-row">
-              <span>AI 语境详解</span>
+              <span>AI 详解</span>
               <StatusChip ok={aiReady} okText="已配置" badText="未配置" />
             </div>
             <div className="status-row">
@@ -176,19 +190,19 @@ export default function App() {
           </div>
 
           <div role={saveState === 'error' ? 'alert' : 'status'} className={`save-note save-note-show ${saveState === 'error' ? 'save-note-error' : ''}`}>
-            {saveState === 'idle' && <span>修改后自动保存</span>}
+            {saveState === 'idle' && <span>普通偏好即时保存</span>}
             {saveState === 'saving' && <span>保存中…</span>}
             {saveState === 'saved' && (
               <>
                 <Check size={12} />
-                <span>已自动保存</span>
+                <span>已保存</span>
               </>
             )}
             {saveState === 'error' && (
               <>
                 <AlertCircle size={12} />
                 <span>保存失败</span>
-                <button type="button" className="save-retry" onClick={() => void persist(s).catch(() => {})}>重试保存</button>
+                <button type="button" className="save-retry" onClick={() => void persist(desired.current).catch(() => {})}>重试保存</button>
               </>
             )}
           </div>
@@ -197,15 +211,20 @@ export default function App() {
 
       {/* ── 主内容 ── */}
       <main>
-        <UxSection {...sectionProps} />
-        <DictSection {...sectionProps} />
         <MtSection {...sectionProps} />
+        <DictSection {...sectionProps} />
         <AiSection {...sectionProps} />
         <DataSection {...sectionProps} />
         <AnkiSection {...sectionProps} onAliveChange={setAnkiAlive} />
+        <UxSection {...sectionProps} />
         <AboutSection {...sectionProps} />
 
-        <p className="foot-note">所有设置修改后立即自动保存并生效。</p>
+        <div className="settings-save-bar" role="status">
+          <span>{dirty ? '连接配置有未保存的修改' : '连接配置已保存'}</span>
+          <button className="btn" disabled={!dirty || saveState === 'saving'} onClick={() => void flush().catch(() => {})}>保存配置</button>
+          <button className="btn" disabled={!dirty || saveState === 'saving'} onClick={() => { desired.current = { ...s, ...connections(applied.current) }; setS(desired.current) }}>放弃修改</button>
+        </div>
+        <p className="foot-note">普通偏好即时保存。AI、WebDAV 与 Anki 连接配置需点击「保存配置」；测试连接使用当前填写内容。</p>
       </main>
     </div>
   )

@@ -1,5 +1,6 @@
+import { settingsSchema } from '@/lib/types'
 import { contextKey, saveLearning, readLearning, updateLearning, removeLearning, importLearning, exportLearning, effectiveCard, markLearningSync } from '@/lib/learning'
-import { WebDavError, getWebDavSyncState, syncLearningWithWebDav, testWebDavConnection } from '@/lib/webdav'
+import { WebDavError, getWebDavSyncState, syncLearningWithWebDav, testWebDavConnection, resolveWebDavConflict } from '@/lib/webdav'
 import { browser, defineBackground } from '#imports'
 import type { Browser } from 'wxt/browser'
 import { AiError, PREVIEW_SAMPLE, listModels, streamEntry, testConnection, translateSentenceWithAi } from '@/lib/ai'
@@ -59,7 +60,8 @@ function scheduleWebDavAutoSync(forcePush = true): void {
 
 async function handle(req: Request, sender?: Browser.runtime.MessageSender): Promise<Result<unknown>> {
   const requestCacheVersion = sentenceTransCacheVersion
-  const settings = await getSettings()
+  const settings = (req.type === 'test-ai' || req.type === 'list-models' || req.type === 'check-anki' || req.type === 'webdav-test') && req.payload?.settings
+    ? settingsSchema.parse(req.payload.settings) : await getSettings()
 
   switch (req.type) {
     case 'list-models': {
@@ -193,7 +195,7 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
       if (!rawSentence) {
         throw new Error('原句内容为空，无法翻译。')
       }
-      const mode: 'mt' | 'ai' = settings.mt.sentenceMode === 'ai' ? 'ai' : 'mt'
+      const mode: 'mt' | 'ai' = req.payload.mode === 'ai' ? 'ai' : 'mt'
       const key = JSON.stringify([
         mode,
         settings.explainLanguage,
@@ -312,8 +314,12 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
       return { ok: true, data: { ...res, records } }
     }
 
+    case 'webdav-resolve': {
+      const result = await resolveWebDavConflict(settings.webdav, req.payload.token, req.payload.keepLocal)
+      return { ok: true, data: { ...result, records: await readLearning() } }
+    }
     case 'webdav-status': {
-      const state = await getWebDavSyncState()
+      const state = await getWebDavSyncState(settings.webdav)
       return { ok: true, data: state }
     }
 

@@ -1,41 +1,12 @@
-import { Zap } from 'lucide-react'
+import { EXPLAIN_LANGUAGES } from '../presets'
 import { Section } from '../components/Section'
 import { Segmented } from '../components/controls'
 import type { SectionProps } from './types'
 
 export function MtSection({ s, onChange }: SectionProps) {
-  return (
-    <Section
-      id="sec-mt"
-      index={1}
-      title="快速翻译"
-      intro={<>划词后点击 <Zap size={13} className="inline-icon" /> 进行快速翻译，无需 AI 配置。长句和词典未收录的词使用在线服务。</>}
-    >
-      <div className="field">
-        <span>首选翻译服务</span>
-        <Segmented
-          value={s.mt.provider}
-          options={[
-            { value: 'microsoft', label: '微软翻译' },
-            { value: 'google', label: '谷歌翻译' },
-          ]}
-          onChange={provider => onChange({ ...s, mt: { ...s.mt, provider } })}
-        />
-      </div>
-      <p className="hint">首选服务连接失败时，会自动尝试另一家翻译服务。</p>
-
-      <div className="field" style={{ marginTop: 14 }}>
-        <span>原句翻译选用服务</span>
-        <Segmented
-          value={s.mt.sentenceMode ?? 'mt'}
-          options={[
-            { value: 'mt', label: '在线快译（微软/谷歌）' },
-            { value: 'ai', label: 'AI 语境译句' },
-          ]}
-          onChange={sentenceMode => onChange({ ...s, mt: { ...s.mt, sentenceMode } })}
-        />
-      </div>
-      <p className="hint">原句默认不自动翻译；当点击原句右上角「翻译原句」按钮时，将调用此处选定的服务。</p>
-    </Section>
-  )
+  return <Section id="sec-mt" index={0} title="查词与翻译" intro="单词优先查询离线词典；未命中的单词与句子使用所选在线快译。AI 由你主动调用。">
+    <div className="field"><span>在线快译服务</span><Segmented value={s.mt.provider} options={[{value:'microsoft',label:'微软翻译'},{value:'google',label:'谷歌翻译'}]} onChange={provider => onChange({...s,mt:{...s.mt,provider}})} /></div>
+    <label className="field"><span>目标语言</span><select value={s.explainLanguage} onChange={e => onChange({...s,explainLanguage:e.target.value})}>{EXPLAIN_LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}</select></label>
+    <p className="hint">查词、翻译原句和 AI 详解使用相同的目标语言。在线快译失败时可重试或主动改用 AI。</p>
+  </Section>
 }

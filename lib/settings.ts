@@ -95,15 +95,7 @@ export function normalizeSettings(raw: unknown): Settings {
       : {}),
   }
 
-  const desktopSentenceMode = typeof r.SentenceTranslateMode === 'string'
-    ? r.SentenceTranslateMode.toLowerCase()
-    : undefined
-  const mtSection = {
-    ...section('mt'),
-    ...(desktopSentenceMode === 'ai' || desktopSentenceMode === 'mt'
-      ? { sentenceMode: desktopSentenceMode }
-      : {}),
-  }
+  const mtSection = section('mt')
 
   const aiSource = r.ai ?? (Array.isArray(r.TranslationProfiles)
     ? {

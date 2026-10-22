@@ -221,7 +221,7 @@ export function DictSection({ s, onChange }: SectionProps) {
       {showConfirmClear && (
         <div className="result">
           <div className="dict-confirm-box">
-            <span className="dict-confirm-msg">确定清空本地离线词库？清空后查词将自动使用在线翻译，已收藏的单词本不受影响。</span>
+            <span className="dict-confirm-msg">确定清空本地离线词库？清空后查词将自动使用在线翻译，已收藏的生词库不受影响。</span>
             <div className="dict-confirm-actions">
               <button
                 type="button"

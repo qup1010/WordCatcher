@@ -34,6 +34,13 @@ export interface LearningRecord {
 }
 
 export interface WebDavSyncState {
+  target?: string
+  verifiedHash?: string
+  isSyncing?: boolean
+  hasPendingChanges?: boolean
+  hasVerifiedSnapshot?: boolean
+  failureKind?: 'network' | 'authentication' | 'conflict' | 'configuration' | 'other'
+  conflict?: import('./learning').LearningConflict
   lastSyncedAt?: number
   lastError?: string
   added?: number
@@ -187,11 +194,9 @@ export const settingsSchema = z.object({
   /** 快速翻译（机器翻译，免费免配置）与原句手动翻译引擎配置 */
   mt: z.object({
     provider: z.enum(['microsoft', 'google']).default('microsoft'),
-    /** 手动点击「翻译原句」时使用的服务：mt = 在线快译；ai = AI 语境译句 */
-    sentenceMode: z.enum(['mt', 'ai']).default('mt'),
   }),
   /** icon = 先显示胶囊按钮；quick = 划词直接快速翻译；ai/auto = 划词直接 AI 释义 */
-  triggerMode: z.enum(['icon', 'quick', 'ai', 'auto']).default('icon'),
+  triggerMode: z.enum(['icon', 'quick']).default('icon'),
   /** 双击网页单词时是否直接展开快速翻译（默认关闭） */
   doubleClickLookup: z.boolean().default(false),
   /** 划词触发的修饰键过滤：none = 常规划词触发；alt/ctrl/shift = 需按住对应键划词 */

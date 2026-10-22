@@ -56,24 +56,23 @@ export function UxSection({ s, onChange }: SectionProps) {
   return (
     <Section
       id="sec-ux"
-      index={0}
-      title="划词与朗读"
+      index={5}
+      title="操作与显示"
       intro="设置网页划选文本时的触发行为、防误触规则与发音语速。"
     >
       <div className="field">
         <span>触发方式</span>
         <Segmented
-          value={s.triggerMode === 'auto' ? 'ai' : s.triggerMode}
+          value={s.triggerMode}
           options={[
             { value: 'icon', label: '先显示操作胶囊' },
-            { value: 'quick', label: '直接快速翻译' },
-            { value: 'ai', label: '直接 AI 释义' },
+            { value: 'quick', label: '直接查词' },
           ]}
           onChange={triggerMode => onChange({ ...s, triggerMode })}
         />
       </div>
       <p className="hint">
-        「操作胶囊」可按需选择快译或 AI 详解；「直接快速翻译」优先查询本地离线词典；「直接 AI 释义」每次划选直接生成语境解析。
+        「操作胶囊」可按需选择快译或 AI 详解；「直接查词」优先查询本地离线词典，未命中时使用在线快译。
       </p>
 
       <div className="field">
@@ -101,7 +100,7 @@ export function UxSection({ s, onChange }: SectionProps) {
             onChange={doubleClickLookup => onChange({ ...s, doubleClickLookup })}
           />
           <span className="field-inline-label">
-            双击单词时跳过操作胶囊，直接展开快速翻译
+            双击单词时跳过操作胶囊，直接展开在线快译
           </span>
         </div>
       </div>

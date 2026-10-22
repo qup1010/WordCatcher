@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { __resetStorage } from '../helpers/wxt-imports-stub'
-import { saveLearning, readLearning } from '../../lib/learning'
+import { saveLearning, readLearning, updateLearning, exportSyncLearning } from '../../lib/learning'
 import { DEFAULT_SETTINGS, type CapturedCard } from '../../lib/types'
 import {
-  buildBasicAuth,
+  buildBasicAuth, getWebDavSyncState, resolveWebDavConflict, webDavStatusLabel,
   resolveWebDavTarget,
   syncLearningWithWebDav,
   testWebDavConnection,
@@ -117,4 +117,56 @@ describe('webdav helpers and sync', () => {
     expect((await readLearning())).toHaveLength(2)
     expect(JSON.parse(uploadedBody).records).toHaveLength(2)
   })
+})
+
+const config = { ...DEFAULT_SETTINGS.webdav, enabled: true, url: 'https://dav.example.test/dav' }
+async function conflictingServer() {
+  const local = await saveLearning(sampleCard('The bank is open.', '本地'))
+  const document = JSON.parse(await exportSyncLearning())
+  document.records[0].card.entry.definition = '云端'
+  let remote = JSON.stringify(document)
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    if (init?.method === 'PUT') { remote = String(init.body); return new Response(null, { status: 204 }) }
+    return new Response(remote, { status: 200, headers: { ETag: '"one"' } })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(syncLearningWithWebDav(config)).rejects.toThrow()
+  const state = await getWebDavSyncState(config)
+  expect(state.conflict).toBeDefined()
+  return { local, state, fetchMock, changeRemote: () => { const next = JSON.parse(remote); next.records[0].edits = { note: 'new edit' }; remote = JSON.stringify(next) } }
+}
+it.each([true, false])('resolves a verified conflict and publishes a dominating vector (local=%s)', async keepLocal => {
+  const { state } = await conflictingServer()
+  await resolveWebDavConflict(config, state.conflict!.token, keepLocal)
+  expect((await readLearning())[0].card.entry.definition).toBe(keepLocal ? '本地' : '云端')
+  const after = await getWebDavSyncState(config)
+  expect(after.conflict).toBeUndefined()
+  expect(webDavStatusLabel(true, after)).toBe('已同步')
+})
+it('rejects a conflict choice after a new local edit without uploading', async () => {
+  const { local, state, fetchMock } = await conflictingServer()
+  await updateLearning(local.id, { definition: '本地', note: 'new local edit' })
+  await expect(resolveWebDavConflict(config, state.conflict!.token, false)).rejects.toThrow('本地记录')
+  expect((await readLearning())[0].edits?.note).toBe('new local edit')
+  expect(fetchMock.mock.calls.some(([,init]) => init?.method === 'PUT')).toBe(false)
+})
+it('rejects a conflict choice after a remote edit without changing local content', async () => {
+  const { state, changeRemote, fetchMock } = await conflictingServer()
+  changeRemote()
+  await expect(resolveWebDavConflict(config, state.conflict!.token, true)).rejects.toThrow('云端记录')
+  expect((await readLearning())[0].card.entry.definition).toBe('本地')
+  expect(fetchMock.mock.calls.some(([,init]) => init?.method === 'PUT')).toBe(false)
+})
+it('keeps edits made during upload pending and isolates status by sync target', async () => {
+  const local = await saveLearning(sampleCard('The bank is open.', 'original'))
+  vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+    if (init?.method === 'GET') return new Response('', { status: 404 })
+    if (init?.method === 'PUT') await updateLearning(local.id, { definition: 'original', note: 'during upload' })
+    return new Response(null, { status: 200 })
+  }))
+  await syncLearningWithWebDav(config)
+  const state = await getWebDavSyncState(config)
+  expect(state.hasPendingChanges).toBe(true)
+  expect(webDavStatusLabel(true, state)).toBe('待同步')
+  expect((await getWebDavSyncState({ ...config, url: 'https://other.test' })).lastSyncedAt).toBeUndefined()
 })

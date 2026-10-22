@@ -51,7 +51,7 @@ export function ContextBlock({
   const effectiveTranslation = translation?.trim() || manualTranslation.trim()
   const canTranslate = Boolean(onTranslated) && !effectiveTranslation && !isSentenceSelection(selection) && sentence.trim().length > 0
 
-  const handleTranslate = async () => {
+  const handleTranslate = async (mode: 'mt' | 'ai' = 'mt') => {
     if (translating) return
     const targetSentence = sentence
     const requestIdentity = contextIdentity
@@ -63,7 +63,7 @@ export function ContextBlock({
     try {
       const res = await sendMessage({
         type: 'translate-sentence',
-        payload: { sentence: targetSentence, selection: selection.trim() },
+        payload: { sentence: targetSentence, selection: selection.trim(), mode },
       })
       if (!isCurrentRequest()) return
       if (res.ok) {
@@ -121,6 +121,8 @@ export function ContextBlock({
       {error && (
         <div className="translation-context-error" role="alert">
           {error}
+          <button disabled={translating} onClick={() => void handleTranslate()}>重试在线快译</button>
+          <button disabled={translating} onClick={() => void handleTranslate('ai')}>改用 AI</button>
         </div>
       )}
     </section>

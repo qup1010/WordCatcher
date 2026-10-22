@@ -47,7 +47,7 @@ describe('ContextBlock', () => {
       await act(async () => btn!.click())
       expect(mock.sendMessage).toHaveBeenCalledWith({
         type: 'translate-sentence',
-        payload: { sentence: 'We will be present after the meeting.', selection: 'present' },
+        payload: { sentence: 'We will be present after the meeting.', selection: 'present', mode: 'mt' },
       })
       expect(onTranslated).toHaveBeenCalledWith('会后我们将出席。')
       expect(host.querySelector('.translation-context-translation')?.textContent).toContain('会后我们将出席。')

@@ -14,7 +14,7 @@ vi.mock('../../entrypoints/options/sections/AiSection', () => ({ AiSection: ({ s
 vi.mock('../../entrypoints/options/sections/AnkiSection', () => ({ AnkiSection: () => null }))
 vi.mock('../../entrypoints/options/sections/MtSection', () => ({ MtSection: () => null }))
 vi.mock('../../entrypoints/options/sections/DictSection', () => ({ DictSection: () => null }))
-vi.mock('../../entrypoints/options/sections/UxSection', () => ({ UxSection: () => null }))
+vi.mock('../../entrypoints/options/sections/UxSection', () => ({ UxSection: ({s,onChange}: {s: Settings,onChange:(s:Settings)=>void}) => createElement('button', {onClick:()=>onChange({...s,explainLanguage:s.explainLanguage === 'English' ? '简体中文' : 'English'})}, '切换语言') }))
 vi.mock('../../entrypoints/options/sections/DataSection', () => ({ DataSection: () => null }))
 vi.mock('../../entrypoints/options/sections/AboutSection', () => ({ AboutSection: () => null }))
 let root: Root
@@ -36,25 +36,42 @@ beforeEach(() => {
   mock.get.mockResolvedValue(structuredClone(DEFAULT_SETTINGS)); mock.save.mockResolvedValue(undefined)
 })
 afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.replaceChildren() })
-it('starts saving immediately and serializes rapid changes', async () => {
+async function click(text: string) {
+  await act(async () => { Array.from(host.querySelectorAll('button')).find(b => b.textContent === text)!.click() })
+}
+it('keeps connection edits as drafts and does not include them in ordinary preference writes', async () => {
+  await mount(); await change('Draft deck')
+  expect(mock.save).not.toHaveBeenCalled()
+  await click('切换语言')
+  expect(mock.save.mock.calls[0][0].anki.deckName).toBe(DEFAULT_SETTINGS.anki.deckName)
+  expect(mock.save.mock.calls[0][0].explainLanguage).toBe('English')
+  expect(host.textContent).toContain('未保存的修改')
+  await click('保存配置')
+  expect(mock.save.mock.calls[1][0].anki.deckName).toBe('Draft deck')
+  expect(host.textContent).toContain('连接配置已保存')
+})
+it('discards connections while retaining ordinary preferences', async () => {
+  await mount(); await change('Discard me'); await click('切换语言'); await click('放弃修改')
+  expect(host.querySelector('input')!.value).toBe(DEFAULT_SETTINGS.anki.deckName)
+  expect(mock.save.mock.calls.at(-1)![0].explainLanguage).toBe('English')
+})
+it('serializes rapid ordinary preference changes', async () => {
   let finish!: () => void
   mock.save.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve }))
-  await mount(); expect(mock.save).not.toHaveBeenCalled()
-  await change('First'); expect(mock.save).toHaveBeenCalledOnce()
-  await change('Latest'); expect(mock.save).toHaveBeenCalledOnce()
-  expect(host.textContent).toContain('保存中')
+  await mount(); await click('切换语言'); await click('切换语言')
+  expect(mock.save).toHaveBeenCalledOnce()
   await act(async () => finish())
   expect(mock.save).toHaveBeenCalledTimes(2)
-  expect(mock.save.mock.calls[1][0].anki.deckName).toBe('Latest')
-  expect(host.textContent).toContain('已自动保存')
+  expect(mock.save.mock.calls[1][0].explainLanguage).toBe('简体中文')
 })
-it('retries failed saves without another artificial form edit', async () => {
+it('retries failed configuration saves without an artificial edit', async () => {
   mock.save.mockRejectedValueOnce(new Error('storage unavailable'))
-  await mount(); await change('Retry me')
+  await mount(); await change('Retry me'); await click('保存配置')
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('保存失败')
-  await act(async () => { host.querySelector<HTMLButtonElement>('.save-retry')!.click() })
+  await click('重试保存')
   expect(mock.save).toHaveBeenCalledTimes(2)
-  expect(host.textContent).toContain('已自动保存')
+  expect(mock.save.mock.calls[1][0].anki.deckName).toBe('Retry me')
+  expect(host.textContent).toContain('连接配置已保存')
 })
 it('shows an actionable load error instead of a blank settings page', async () => {
   mock.get.mockRejectedValue(new Error('storage unavailable'))

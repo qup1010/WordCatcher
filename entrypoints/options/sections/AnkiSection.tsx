@@ -20,7 +20,7 @@ function formatTime(ms: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionProps) {
+export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: AnkiSectionProps) {
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [queue, setQueue] = useState<CapturedCard[]>([])
   const [queueStatus, setQueueStatus] = useState<Status>({ kind: 'idle' })
@@ -40,9 +40,7 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
 
   const onTest = async () => {
     setStatus({ kind: 'busy' })
-    await flush()
-
-    const res = await sendMessage({ type: 'check-anki' })
+    const res = await sendMessage({ type: 'check-anki', payload: { settings: s } })
     if (!res || !res.ok) {
       onAliveChange(false)
       setStatus({ kind: 'err', text: res?.error ?? '扩展后台未响应，请重新加载扩展后再试。' })
@@ -50,24 +48,11 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
     }
     onAliveChange(true)
 
-    const sync = await sendMessage({ type: 'sync-anki-templates' })
-    if (sync?.ok) {
-      setStatus({
-        kind: 'ok',
-        text: `连接成功（AnkiConnect v${res.data.version}），四模式卡片模板已更新。`,
-      })
-      return
-    }
-
-    setStatus({
-      kind: 'err',
-      text: sync?.error
-        ? `Anki 已连接（v${res.data.version}），但卡片模板更新未完成：${sync.error}`
-        : `Anki 已连接（v${res.data.version}），但模板更新未响应。请重新加载扩展后再试。`,
-    })
+    setStatus({ kind: 'ok', text: `连接成功（AnkiConnect v${res.data.version}）。保存配置后用于制卡。` })
   }
 
   const onFlush = async () => {
+    if (connectionsDirty) { setQueueStatus({ kind: 'err', text: '请先保存连接配置。' }); return }
     setQueueStatus({ kind: 'busy' })
     const res = await sendMessage({ type: 'flush-pending' })
     if (!res.ok) {
@@ -102,9 +87,9 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
   return (
     <Section
       id="sec-anki"
-      index={5}
+      index={4}
       title="Anki 制卡（可选）"
-      intro="生词保存在单词本中，可按需制作 Anki 卡片。插件与桌面端的词库同步统一在「数据与单词本」中配置 WebDAV。"
+      intro="生词保存在生词库中，可按需制作 Anki 卡片。插件与桌面端的词库同步统一在「词库与同步」中配置 WebDAV。"
     >
       {/* ── Anki 制卡拓展 ── */}
       <div className="block">
@@ -136,7 +121,7 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
               onChange={enabled => patchAnki({ enabled })}
             />
             <span className="field-inline-label">
-              {ankiEnabled ? '保存词条时自动同步至 Anki（离线时暂存队列）' : '已关闭（仅保存在插件内置单词本）'}
+              {ankiEnabled ? '保存词条时自动同步至 Anki（离线时暂存队列）' : '已关闭（仅保存在插件内置生词库）'}
             </span>
           </div>
         </div>
@@ -206,7 +191,7 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
             {queue.length > 0 && <span className="chip">{queue.length}</span>}
           </div>
           <p className="block-hint">
-            Anki 未运行时保存的卡片会暂存在此处（词条本身已保存在本地单词本）。打开 Anki 后可一键补写。
+            Anki 未运行时保存的卡片会暂存在此处（词条本身已保存在本地生词库）。打开 Anki 后可一键补写。
           </p>
 
           {queue.length === 0
@@ -224,7 +209,7 @@ export function AnkiSection({ s, onChange, flush, onAliveChange }: AnkiSectionPr
                         <button
                           type="button"
                           className="btn btn-icon btn-danger"
-                          title={`移出待同步队列（保留在本地单词本）`}
+                          title={`移出待同步队列（保留在本地生词库）`}
                           onClick={() => void onRemove(card)}
                         >
                           <Trash2 size={13} />

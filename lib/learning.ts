@@ -19,6 +19,64 @@ export function contextKey(card: Pick<CapturedCard, 'selection' | 'sentence' | '
   return JSON.stringify([card.selection, card.sentence, card.sentenceOffset, card.pageUrl])
 }
 
+export interface LearningConflict {
+  token: string
+  recordId: string
+  local: LearningRecord
+  remote: LearningRecord
+}
+
+export class LearningConflictError extends Error {
+  readonly conflict: LearningConflict
+  constructor(message: string, local: LearningRecord, remote: LearningRecord) {
+    super(message)
+    this.name = 'LearningConflictError'
+    this.conflict = { token: crypto.randomUUID(), recordId: local.id, local: structuredClone(local), remote: structuredClone(remote) }
+  }
+}
+
+// Stable comparison ignores local Anki delivery status and JSON property order.
+export function stableSyncJson(value: unknown): string {
+  const normalize = (v: unknown): unknown => Array.isArray(v) ? v.map(normalize)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, normalize(x)])) : v
+  return JSON.stringify(normalize(value))
+}
+
+export function syncRecordJson({ syncedAt: _syncedAt, syncError: _syncError, ...record }: LearningRecord): string {
+  return stableSyncJson(record)
+}
+
+export function resolveLearningConflict(conflict: LearningConflict, keepLocal: boolean): Promise<void> {
+  return mutate(async () => {
+    const state = await readState()
+    const current = [...state.active, ...state.tombstones].find(r => r.id === conflict.recordId)
+    if (!current || syncRecordJson(current) !== syncRecordJson(conflict.local)) {
+      throw new Error('本地记录在查看冲突后又有修改，请重新同步并查看最新差异。')
+    }
+    if (conflict.remote.id !== current.id || contextKey(current.card) !== contextKey(conflict.remote.card)) {
+      throw new Error('冲突记录标识或语境不一致，请重新同步。')
+    }
+    const chosen = structuredClone(keepLocal ? current : conflict.remote)
+    chosen.revision = Math.max(current.revision ?? 1, conflict.remote.revision ?? 1) + 1
+    if (chosen.revision > 2147483647) throw new Error('记录版本已超出安全范围。')
+    chosen.versionVector = advanceVersionVector({ ...chosen, versionVector: mergeVersionVectors(
+      versionVectorFor(current, state.deviceId), versionVectorFor(conflict.remote, state.deviceId)) }, state.deviceId)
+    if (Object.keys(chosen.versionVector).length > 64) throw new Error('同步设备数量已超出安全范围。')
+    chosen.card.recordId = chosen.id
+    chosen.card.recordRevision = chosen.revision
+    chosen.updatedAt = Math.max(Date.now(), current.updatedAt ?? 0, conflict.remote.updatedAt ?? 0,
+      current.wordMeta?.updatedAt ?? 0, conflict.remote.wordMeta?.updatedAt ?? 0) + 1
+    if (chosen.wordMeta) chosen.wordMeta.updatedAt = chosen.updatedAt
+    delete chosen.syncedAt
+    delete chosen.syncError
+    await writeState({ ...state,
+      active: [...state.active.filter(r => r.id !== current.id), ...(!chosen.deletedAt ? [chosen] : [])],
+      tombstones: [...state.tombstones.filter(r => r.id !== current.id), ...(chosen.deletedAt ? [chosen] : [])],
+    })
+  })
+}
+
 interface LearningState {
   deviceId: string
   active: LearningRecord[]
@@ -597,6 +655,11 @@ function mergeWordMeta(local?: LearningWordMeta, remote?: LearningWordMeta): Lea
   return remoteTime > localTime ? remote : local
 }
 
+function mergeRecordMeta(local: LearningRecord, remote: LearningRecord): LearningWordMeta | undefined {
+  try { return mergeWordMeta(local.wordMeta, remote.wordMeta) }
+  catch (error) { throw new LearningConflictError(error instanceof Error ? error.message : String(error), local, remote) }
+}
+
 /**
  * 使用每条记录的设备版本向量检测并合并 WebDAV 更新。
  */
@@ -652,9 +715,9 @@ export function mergeLearningRecords(rawJson: string): Promise<{
       const sameContent = Boolean(loc.deletedAt) === Boolean(rem.deletedAt)
         && learningContent(loc) === learningContent(rem)
       if ((order === 'equal' || order === 'concurrent') && !sameContent) {
-        throw new Error(order === 'equal'
+        throw new LearningConflictError(order === 'equal'
           ? '同一记录在两端具有相同因果版本但内容不同，已停止同步并保留两端内容。'
-          : '检测到两端离线期间并发修改了同一记录，已停止同步并保留两端内容，请先处理冲突。')
+          : '检测到两端离线期间并发修改了同一记录，请选择保留的内容。', loc, rem)
       }
 
       const vectorOrder = order
@@ -666,7 +729,7 @@ export function mergeLearningRecords(rawJson: string): Promise<{
           versionVector: versionVectorFor(rem, state.deviceId),
           syncedAt: undefined,
           syncError: undefined,
-          wordMeta: mergeWordMeta(loc.wordMeta, rem.wordMeta),
+          wordMeta: mergeRecordMeta(loc, rem),
         }
         byKey.set(key, mergedRecord)
 
@@ -680,12 +743,12 @@ export function mergeLearningRecords(rawJson: string): Promise<{
           revision: Math.max(loc.revision ?? 1, rem.revision ?? 1),
           updatedAt: Math.max(loc.updatedAt ?? 0, rem.updatedAt ?? 0),
           versionVector: mergeVersionVectors(versionVectorFor(loc, state.deviceId), versionVectorFor(rem, state.deviceId)),
-          wordMeta: mergeWordMeta(loc.wordMeta, rem.wordMeta),
+          wordMeta: mergeRecordMeta(loc, rem),
         }
         byKey.set(key, mergedRecord)
         remoteDiffersFromMerged = true
       } else {
-        const mergedMeta = mergeWordMeta(loc.wordMeta, rem.wordMeta)
+        const mergedMeta = mergeRecordMeta(loc, rem)
         if (mergedMeta !== loc.wordMeta) byKey.set(key, { ...loc, wordMeta: mergedMeta })
         if (vectorOrder === 'local-dominates') {
           remoteDiffersFromMerged = true

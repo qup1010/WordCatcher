@@ -1,3 +1,4 @@
+import { webDavStatusLabel } from '@/lib/webdav'
 import { BookOpen, Cloud, Download, RefreshCw, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { backupFileName, buildBackup, describeSettings, parseBackup } from '@/lib/backup'
@@ -15,7 +16,7 @@ function formatSyncTime(ms?: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-export function DataSection({ s, onChange, flush }: SectionProps) {
+export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
   const [libraryCount, setLibraryCount] = useState(0)
   const [libraryStatus, setLibraryStatus] = useState<Status>({ kind: 'idle' })
   const [webdavStatus, setWebdavStatus] = useState<Status>({ kind: 'idle' })
@@ -41,12 +42,22 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
     })
   }
 
-  useEffect(refresh, [])
+  useEffect(() => {
+    refresh()
+    const timer = setInterval(() => { void sendMessage({ type: 'webdav-status' }).then(res => { if (res.ok) setWebdavState(res.data) }) }, 2000)
+    return () => clearInterval(timer)
+  }, [])
+  const resolveConflict = async (keepLocal: boolean) => {
+    if (!webdavState.conflict || connectionsDirty) return
+    setWebdavStatus({ kind: 'busy' })
+    const result = await sendMessage({ type: 'webdav-resolve', payload: { token: webdavState.conflict.token, keepLocal } })
+    setWebdavStatus(result.ok ? { kind: 'ok', text: '已应用选择并重新同步。' } : { kind: 'err', text: result.error })
+    refresh()
+  }
 
   const onTestWebDav = async () => {
     setWebdavStatus({ kind: 'busy' })
-    await flush()
-    const res = await sendMessage({ type: 'webdav-test' })
+    const res = await sendMessage({ type: 'webdav-test', payload: { settings: s } })
     if (!res.ok) {
       setWebdavStatus({ kind: 'err', text: res.error })
       return
@@ -61,7 +72,7 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
 
   const onSyncWebDav = async () => {
     setWebdavStatus({ kind: 'busy' })
-    await flush()
+    if (connectionsDirty) { setWebdavStatus({ kind: 'err', text: '请先保存连接配置，再立即同步。' }); return }
     const res = await sendMessage({ type: 'webdav-sync', payload: { forcePush: true } })
     if (!res.ok) {
       setWebdavStatus({ kind: 'err', text: res.error })
@@ -96,7 +107,7 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
     a.download = `word-catcher-library-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-    setLibraryStatus({ kind: 'ok', text: `已导出 ${libraryCount} 条单词本语境记录。` })
+    setLibraryStatus({ kind: 'ok', text: `已导出 ${libraryCount} 条生词库语境记录。` })
   }
 
   const onImportLibraryFile = async (file: File) => {
@@ -156,14 +167,14 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
       return
     }
 
-    await saveSettings(result.settings)
+    // 导入内容先展示为连接草稿，由用户明确保存。
     if (result.history && result.history.length > 0) {
       await sendMessage({ type: 'history-import', payload: { items: result.history } })
     }
     onChange(result.settings)
     setBackupStatus({
       kind: 'ok',
-      text: `已导入：${describeSettings(result.settings, result.history?.length ?? 0)}`,
+      text: `已载入配置草稿，请保存配置：${describeSettings(result.settings, result.history?.length ?? 0)}`,
     })
   }
 
@@ -172,25 +183,19 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
   return (
     <Section
       id="sec-data"
-      index={4}
-      title="数据与单词本"
-      intro="管理 WebDAV 多端单词本同步、本地单词本备份、插件配置迁移与 AI 释义缓存。"
+      index={3}
+      title="词库与同步"
+      intro="管理 WebDAV 多端生词库同步、本地生词库备份、插件配置迁移与 AI 释义缓存。"
     >
-      {/* ── WebDAV 多端单词本同步 ── */}
+      {/* ── WebDAV 多端生词库同步 ── */}
       <div className="block">
         <div className="block-head">
           <Cloud size={14} className="inline-icon" />
-          <strong>WebDAV 单词本多端同步</strong>
-          {webdavEnabled && (
-            <StatusChip
-              ok={Boolean(s.webdav.url.trim()) && !webdavState.lastError}
-              okText={webdavState.lastSyncedAt ? `上次同步 ${formatSyncTime(webdavState.lastSyncedAt)}` : '已开启'}
-              badText={webdavState.lastError ? '同步异常' : '待配置地址'}
-            />
-          )}
+          <strong>WebDAV 生词库多端同步</strong>
+          <span className="chip" role="status">{webDavStatusLabel(webdavEnabled, webdavState)}</span>
         </div>
         <p className="block-hint">
-          各端配置相同的 HTTPS WebDAV 地址和文件路径，可同步词条、语境、编辑和删除。自动同步在修改词条或打开单词本时触发，也可点击「立即同步」拉取其他设备的改动。服务器需支持强 ETag 条件写入；发生冲突时会停止上传并保留两端内容。
+          各端配置相同的 HTTPS WebDAV 地址和文件路径，可同步词条、语境、编辑和删除。自动同步在修改词条或打开生词库时触发，也可点击「立即同步」拉取其他设备的改动。服务器需支持强 ETag 条件写入；发生冲突时会停止上传并保留两端内容。
         </p>
 
         <div className="field" style={{ marginTop: 12 }}>
@@ -201,7 +206,7 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
               onChange={enabled => patchWebDav({ enabled })}
             />
             <span className="field-inline-label">
-              {webdavEnabled ? '已启用多端单词本同步' : '已关闭（仅使用本地存储）'}
+              {webdavEnabled ? '已启用多端生词库同步' : '已关闭（仅使用本地存储）'}
             </span>
           </div>
         </div>
@@ -252,7 +257,7 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
                   checked={s.webdav.autoSync !== false}
                   onChange={autoSync => patchWebDav({ autoSync })}
                 />
-                <span className="field-inline-label">保存、编辑、删除词条或打开单词本时自动与云端合并</span>
+                <span className="field-inline-label">保存、编辑、删除词条或打开生词库时自动与云端合并</span>
               </div>
             </div>
 
@@ -272,7 +277,7 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
                 onClick={() => void onSyncWebDav()}
               >
                 <RefreshCw size={14} />
-                <span>立即同步单词本</span>
+                <span>立即同步生词库</span>
               </button>
             </div>
 
@@ -285,20 +290,34 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
         )}
       </div>
 
-      {/* ── 本地单词本数据 ── */}
+      {webdavState.conflict && <div className="block" role="region" aria-label="同步冲突对照">
+        <h3>有冲突</h3><p>同一记录在两端均有修改。选择要保留的完整版本，随后重新同步。</p>
+        <div className="conflict-columns">
+          {([['本地版本',webdavState.conflict.local],['云端版本',webdavState.conflict.remote]] as const).map(([label,record]) => <div key={label}>
+            <h4>{label} · {record.deletedAt ? '已删除' : '有效记录'}</h4>
+            <strong>{record.wordMeta?.displayWord || record.card.entry.word}</strong>
+            <p>{record.card.sentence}</p>
+            <dl><dt>释义</dt><dd>{record.edits?.definition ?? record.card.entry.definition}</dd><dt>译文</dt><dd>{record.edits?.contextTranslation ?? record.card.entry.contextTranslation}</dd><dt>备注</dt><dd>{record.edits?.note || '无'}</dd></dl>
+            <details><summary>完整记录</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(record,null,2)}</pre></details>
+          </div>)}
+        </div>
+        <div className="row"><button className="btn" disabled={connectionsDirty || webdavStatus.kind === 'busy'} onClick={() => void resolveConflict(true)}>保留本地版本</button><button className="btn" disabled={connectionsDirty || webdavStatus.kind === 'busy'} onClick={() => void resolveConflict(false)}>保留云端版本</button></div>
+        {connectionsDirty && <p className="hint">请先保存或放弃连接配置修改。</p>}
+      </div>}
+            {/* ── 本地生词库数据 ── */}
       <div className="block">
         <div className="block-head">
           <BookOpen size={14} className="inline-icon" />
-          <strong>本地单词本备份</strong>
+          <strong>本地生词库备份</strong>
           <span className="chip">{libraryCount} 条语境</span>
         </div>
         <p className="block-hint">
-          导出或导入保存在本地「单词本」中的所有生词、原句语境、AI 详解与个人笔记，支持与 Windows 桌面端互相导入。
+          导出或导入保存在本地「生词库」中的所有生词、原句语境、AI 详解与个人笔记，支持与 Windows 桌面端互相导入。
         </p>
         <div className="block-actions">
           <button className="btn btn-icon" onClick={() => void onExportLibrary()}>
             <Download size={14} />
-            <span>导出单词本 JSON</span>
+            <span>导出生词库 JSON</span>
           </button>
           <button
             className="btn btn-icon"
@@ -306,7 +325,7 @@ export function DataSection({ s, onChange, flush }: SectionProps) {
             onClick={() => libraryFileRef.current?.click()}
           >
             <Upload size={14} />
-            <span>导入单词本 JSON</span>
+            <span>导入生词库 JSON</span>
           </button>
           <input
             ref={libraryFileRef}

@@ -2,7 +2,7 @@ import { browser } from '#imports'
 import type { PartialEntry } from './ai'
 import type { GoogleDictEntry, MtProvider } from './machine-translate'
 import type { DictMeta, QuickDictResult } from './open-dict/types'
-import type { CapturedCard, HistoryItem, WordEntry, LearningEdits, LearningRecord, WebDavSyncState } from './types'
+import type { CapturedCard, HistoryItem, WordEntry, LearningEdits, LearningRecord, WebDavSyncState, Settings } from './types'
 
 /**
  * 内容脚本 / 弹窗 / 设置页 与 background 之间的消息契约。
@@ -46,7 +46,7 @@ export interface ActiveLookupSnapshot {
 
 export type Request =
   | { type: 'quick-translate', payload: { text: string, context?: LookupContextPayload } }
-  | { type: 'translate-sentence', payload: { sentence: string, selection?: string } }
+  | { type: 'translate-sentence', payload: { sentence: string, selection?: string, mode?: 'mt' | 'ai' } }
   | { type: 'save-card', payload: CapturedCard }
   | { type: 'library-list' }
   | { type: 'library-update', payload: { id: string, edits: LearningEdits } }
@@ -54,9 +54,10 @@ export type Request =
   | { type: 'library-remove', payload: { id: string } }
   | { type: 'library-import', payload: { json: string } }
   | { type: 'library-export' }
-  | { type: 'webdav-test' }
+  | { type: 'webdav-test', payload?: { settings: Settings } }
   | { type: 'webdav-sync', payload?: { forcePush?: boolean } }
   | { type: 'webdav-status' }
+  | { type: 'webdav-resolve', payload: { token: string, keepLocal: boolean } }
   | { type: 'pending-count' }
   | { type: 'pending-list' }
   | { type: 'remove-pending', payload: { word: string, contextKey?: string, recordId?: string } }
@@ -65,10 +66,10 @@ export type Request =
   | { type: 'clear-cache' }
   | { type: 'flush-pending' }
   | { type: 'check-duplicate', payload: { word: string, context?: { selection: string, sentence: string, sentenceOffset: number, pageUrl: string } } }
-  | { type: 'check-anki' }
+  | { type: 'check-anki', payload?: { settings: Settings } }
   | { type: 'sync-anki-templates' }
-  | { type: 'list-models' }
-  | { type: 'test-ai' }
+  | { type: 'list-models', payload?: { settings: Settings } }
+  | { type: 'test-ai', payload?: { settings: Settings } }
   | { type: 'open-options' }
   | { type: 'open-sidepanel' }
   | { type: 'sidepanel-set-active', payload: ActiveLookupSnapshot }
@@ -110,6 +111,7 @@ export interface ResponseMap {
     syncedAt: number
     records: LearningRecord[]
   }
+  'webdav-resolve': ResponseMap['webdav-sync']
   'webdav-status': WebDavSyncState
   'pending-count': { count: number }
   'pending-list': { cards: CapturedCard[] }

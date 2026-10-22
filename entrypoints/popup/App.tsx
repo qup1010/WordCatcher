@@ -144,7 +144,7 @@ export default function App() {
       if (res.data.queued && res.data.pending !== undefined) setPending(res.data.pending)
       setHistoryFeedback({
         kind: 'ok',
-        text: `「${item.word}」已存入单词本。`,
+        text: `「${item.word}」已存入生词库。`,
       })
     } else {
       setHistoryFeedback({ kind: 'err', text: res.error })
@@ -218,7 +218,7 @@ export default function App() {
           <button
             type="button"
             className="pop-gear-btn"
-            title="在侧边栏中打开单词本与查词"
+            title="在侧边栏中打开生词库与查词"
             aria-label="在侧边栏中打开"
             onClick={() => void openSidePanel()}
           >
@@ -289,7 +289,7 @@ export default function App() {
               <span className="dot" />
               <div className="check-body">
                 <div className="check-head-row">
-                  <strong>快速翻译</strong>
+                  <strong>在线快译</strong>
                 </div>
                 <div className="chips" role="radiogroup" aria-label="翻译服务">
                   {MT_PROVIDERS.map(p => (
@@ -313,7 +313,7 @@ export default function App() {
               <span className="dot" />
               <div className="check-body">
                 <div className="check-head-row">
-                  <strong>AI 语境详解</strong>
+                  <strong>AI 详解</strong>
                   <span className={`status-badge ${aiReady ? 'status-badge-ok' : 'status-badge-wait'}`}>
                     {aiReady ? '已配置' : '待配置'}
                   </span>
@@ -353,10 +353,10 @@ export default function App() {
                   </span>
                 </div>
                 <p>
-                  {!ankiEnabled && '生词默认保存在内置单词本'}
+                  {!ankiEnabled && '生词默认保存在内置生词库'}
                   {ankiEnabled && anki.kind === 'checking' && '正在检测本地 Anki…'}
                   {ankiEnabled && anki.kind === 'ok' && `同步至牌组「${s.anki.deckName}」`}
-                  {ankiEnabled && anki.kind === 'err' && '生词保存在本地单词本；打开 Anki 可同步卡片'}
+                  {ankiEnabled && anki.kind === 'err' && '生词保存在本地生词库；打开 Anki 可同步卡片'}
                 </p>
               </div>
             </li>
@@ -368,7 +368,7 @@ export default function App() {
                 <Inbox size={14} />
                 <span>{pending} 张卡片待同步至 Anki</span>
               </div>
-              <p>词条已保存在本地单词本。启动 Anki 桌面版后可批量同步。</p>
+              <p>词条已保存在本地生词库。启动 Anki 桌面版后可批量同步。</p>
               <button
                 className="btn btn-quiet"
                 disabled={flush.kind === 'busy'}
@@ -384,7 +384,7 @@ export default function App() {
           <div className="pop-footer">
             <button className="btn" onClick={() => void openSidePanel()}>
               <PanelRight size={13} />
-              打开侧边栏（单词本与复习）
+              打开侧边栏（生词库与复习）
             </button>
           </div>
         </>
@@ -438,7 +438,7 @@ export default function App() {
                         <button
                           type="button"
                           className="pop-btn-icon-sm"
-                          title={historyBusy === item.id ? '正在保存' : '存入单词本'}
+                          title={historyBusy === item.id ? '正在保存' : '存入生词库'}
                           aria-label={`保存 ${item.word}`}
                           disabled={historyBusy !== null}
                           onClick={() => void onSaveHistoryItem(item)}

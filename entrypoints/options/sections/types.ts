@@ -10,7 +10,8 @@ import type { Settings } from '@/lib/types'
 export interface SectionProps {
   s: Settings
   onChange: (next: Settings) => void
-  /** 发测试请求前先把页面上正在填的值落盘，否则 background 读到的还是旧配置 */
+  /** 明确保存连接配置；测试请求直接传递草稿。 */
+  connectionsDirty?: boolean
   flush: () => Promise<void>
 }
 

@@ -247,17 +247,17 @@ describe('quickTranslate', () => {
     })
   })
 
-  it('首选失败时自动回退到另一家，并标记 fellBack', async () => {
+  it('所选服务失败时显示错误，不自动切换供应商', async () => {
     mockRoutes({
       [MS_AUTH]: () => new TypeError('Failed to fetch'),
       [GOOGLE]: () => json([[['谷歌兜底', 'x', null]], null, 'en']),
     })
 
-    const out = await quickTranslate('word', { provider: 'microsoft', explainLanguage: '简体中文' })
-    expect(out).toEqual({ translation: '谷歌兜底', provider: 'google', fellBack: true })
+    await expect(quickTranslate('word', { provider: 'microsoft', explainLanguage: '简体中文' })).rejects.toThrow('微软翻译')
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
   })
 
-  it('两家都失败时报一条带原因的可读错误', async () => {
+  it('保留所选服务的限流原因', async () => {
     mockRoutes({
       [MS_AUTH]: () => new TypeError('Failed to fetch'),
       [GOOGLE]: () => json({}, 429),
@@ -266,7 +266,8 @@ describe('quickTranslate', () => {
     const err = await quickTranslate('word', { provider: 'google', explainLanguage: '简体中文' })
       .catch(e => e)
     expect(err).toBeInstanceOf(MtError)
-    expect(err.message).toContain('两家')
+    expect(err.message).toContain('429')
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
   })
 
   it('释义语言映射到各家的语言代码；未知语言退回简体中文', async () => {

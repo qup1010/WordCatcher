@@ -44,7 +44,7 @@ export function AboutSection(_props: SectionProps) {
               Word Catcher <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--teal)', fontFamily: 'var(--font-sans)', background: 'var(--teal-wash)', padding: '2px 8px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hairline)', marginLeft: 6 }}>v{version}</span>
             </div>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
-              在阅读中随时查词，连同真实语境存入本地单词本，通过内置卡片自测或联动桌面端、Anki 高效复习。
+              在阅读中随时查词，连同真实语境存入本地生词库，通过内置卡片自测或联动桌面端、Anki 高效复习。
             </p>
           </div>
         </div>
