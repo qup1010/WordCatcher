@@ -182,7 +182,11 @@ export function effectiveCard(record: LearningRecord): CapturedCard {
   }
 }
 
-export function saveLearning(card: CapturedCard): Promise<LearningRecord> {
+export async function saveLearning(card: CapturedCard): Promise<LearningRecord> {
+  return (await saveLearningWithReceipt(card)).record
+}
+
+export function saveLearningWithReceipt(card: CapturedCard): Promise<{ record: LearningRecord, created: boolean }> {
   return mutate(async () => {
     if (!card.selection.trim() || !card.entry.word.trim() || !card.entry.definition.trim()) {
       throw new Error('表达和释义不能为空，未保存。')
@@ -196,7 +200,7 @@ export function saveLearning(card: CapturedCard): Promise<LearningRecord> {
     const targetKey = contextKey(card)
     const existing = list.find(r => card.recordId ? r.id === card.recordId : contextKey(r.card) === targetKey)
     if (existing && contextKey(existing.card) !== targetKey) throw new Error('同一记录标识不能用于不同语境。')
-    if (existing && !card.updateExisting) return existing
+    if (existing && !card.updateExisting) return { record: existing, created: false }
 
     const existingTombstone = tombstones.find(t => existing
       ? t.id === existing.id
@@ -230,7 +234,7 @@ export function saveLearning(card: CapturedCard): Promise<LearningRecord> {
       active: [record, ...list.filter(r => r.id !== id)],
       tombstones: existingTombstone ? tombstones.filter(t => t.id !== existingTombstone.id) : tombstones,
     })
-    return record
+    return { record, created: !existing && !existingTombstone }
   })
 }
 
@@ -255,11 +259,12 @@ export function updateLearning(id: string, edits: LearningEdits): Promise<Learni
   })
 }
 
-export function removeLearning(id: string): Promise<LearningRecord[]> {
+export function removeLearning(id: string, expectedRevision?: number): Promise<LearningRecord[]> {
   return mutate(async () => {
     const state = await readState()
     const list = state.active
     const found = list.find(r => r.id === id)
+    if (expectedRevision !== undefined && (!found || found.revision !== expectedRevision)) throw new Error("这条语境已有后续修改，请在生词库中处理。")
     const next = list.filter(r => r.id !== id)
     if (found) {
       const now = Date.now()

@@ -1,5 +1,5 @@
 import { settingsSchema } from '@/lib/types'
-import { contextKey, saveLearning, readLearning, updateLearning, removeLearning, importLearning, exportLearning, effectiveCard, markLearningSync } from '@/lib/learning'
+import { contextKey, saveLearning, saveLearningWithReceipt, readLearning, updateLearning, removeLearning, importLearning, exportLearning, effectiveCard, markLearningSync } from '@/lib/learning'
 import { WebDavError, getWebDavSyncState, syncLearningWithWebDav, testWebDavConnection, resolveWebDavConflict } from '@/lib/webdav'
 import { browser, defineBackground } from '#imports'
 import type { Browser } from 'wxt/browser'
@@ -235,7 +235,8 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
     }
 
     case 'save-card': {
-      const record = await saveLearning(req.payload)
+      const { record, created } = await saveLearningWithReceipt(req.payload)
+      const undoId = created && record.revision === 1 ? record.id : undefined
       const card = effectiveCard(record)
       if (settings.webdav?.enabled && settings.webdav.autoSync && settings.webdav.url.trim()) {
         scheduleWebDavAutoSync(true)
@@ -244,22 +245,28 @@ async function handle(req: Request, sender?: Browser.runtime.MessageSender): Pro
       // 若用户关闭了 Anki 自动同步拓展，直接保存在本地单词本即可，无需报错或入队
       if (settings.anki.enabled === false) {
         void markHistorySaved(record.card.entry.word)
-        return { ok: true, data: { noteId: null, queued: false, recordId: record.id } }
+        return { ok: true, data: { noteId: null, queued: false, recordId: record.id, undoId } }
       }
 
       try {
         const noteId = await addNote(card, settings)
         await markLearningSync(record.id, undefined, record.revision)
         void markHistorySaved(record.card.entry.word)
-        return { ok: true, data: { noteId, queued: false, recordId: record.id } }
+        return { ok: true, data: { noteId, queued: false, recordId: record.id, undoId } }
       } catch (err) {
         const message = toErrorMessage(err)
         await markLearningSync(record.id, message, record.revision)
         const pending = await enqueue(card)
-        return { ok: true, data: { noteId: null, queued: true, pending, recordId: record.id, syncError: message } }
+        return { ok: true, data: { noteId: null, queued: true, pending, recordId: record.id, undoId, syncError: message } }
       }
     }
 
+    case 'undo-save': {
+      await removeLearning(req.payload.id, 1)
+      await removePending('', undefined, req.payload.id)
+      if (settings.webdav?.enabled && settings.webdav.autoSync && settings.webdav.url.trim()) scheduleWebDavAutoSync(true)
+      return { ok: true, data: null }
+    }
     case 'library-list':
       return { ok: true, data: await readLearning() }
     case 'library-export':

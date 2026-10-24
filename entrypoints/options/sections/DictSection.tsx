@@ -8,7 +8,7 @@ import { Section } from '../components/Section'
 import { StatusChip, Switch } from '../components/controls'
 import type { SectionProps } from './types'
 
-export function DictSection({ s, onChange }: SectionProps) {
+export function DictSection({ s, onChange, onMetaChange }: SectionProps & { onMetaChange?: (meta: DictMeta) => void }) {
   const [meta, setMeta] = useState<DictMeta>({
     status: 'uninstalled',
     entryCount: 0,
@@ -23,7 +23,10 @@ export function DictSection({ s, onChange }: SectionProps) {
 
   const refreshMeta = () => {
     void sendMessage({ type: 'dict-status' }).then((res) => {
-      if (res.ok) setMeta(res.data)
+      if (res.ok) {
+        setMeta(res.data)
+        onMetaChange?.(res.data)
+      }
     })
   }
 
@@ -121,25 +124,25 @@ export function DictSection({ s, onChange }: SectionProps) {
       id="sec-dict"
       index={1}
       title="离线词典"
-      intro="安装 Open Dictionary 本地词库后，查询英文单词无需联网即可毫秒级响应。"
+      intro="下载并安装 Open Dictionary 后，可离线查询收录的英文单词。"
     >
       <div className="field">
-        <span>启用离线词库</span>
+        <span>启用离线词典</span>
         <div className="field-inline">
           <Switch
             checked={Boolean(s.dict?.enabled ?? true)}
             onChange={enabled => onChange({ ...s, dict: { ...s.dict, downloadUrl, enabled } })}
           />
-          <span className="field-inline-label">单词优先查询本地词库，未收录词条与长句自动切换在线翻译</span>
+          <span className="field-inline-label">查词时优先使用已安装的词典</span>
         </div>
       </div>
 
       <div className="field">
-        <span>词库状态</span>
+        <span>安装状态</span>
         <div className="field-inline">
           <StatusChip
             ok={isReady}
-            okText={`已就绪（${meta.entryCount.toLocaleString()} 词）`}
+            okText={`已安装 · ${meta.entryCount.toLocaleString()} 个词条`}
             badText={isDownloading ? '正在安装…' : '未安装'}
           />
         </div>
@@ -172,6 +175,7 @@ export function DictSection({ s, onChange }: SectionProps) {
       {(errorMsg || (meta.status === 'error' && meta.errorMessage)) && (
         <div className="result">
           <p className="err">{errorMsg || meta.errorMessage}</p>
+          <p className="hint">可重试下载，或从 <a href="https://github.com/ahpxex/open-dictionary/releases" target="_blank" rel="noreferrer">Open Dictionary 发布页</a>下载 <code>distribution.jsonl.gz</code>，再选择「从文件安装」。</p>
         </div>
       )}
 
@@ -192,7 +196,7 @@ export function DictSection({ s, onChange }: SectionProps) {
               onClick={onStartDownload}
             >
               {isReady ? <RefreshCw size={14} /> : <Download size={14} />}
-              <span>{isReady ? '在线更新词库' : '在线下载安装（约 93 MB）'}</span>
+              <span>{isReady ? '重新下载词典' : '下载词典'}</span>
             </button>
 
             <button
@@ -201,7 +205,7 @@ export function DictSection({ s, onChange }: SectionProps) {
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload size={14} />
-              <span>从本地文件导入</span>
+              <span>从文件安装</span>
             </button>
           </>
         )}
@@ -213,7 +217,7 @@ export function DictSection({ s, onChange }: SectionProps) {
             onClick={() => setShowConfirmClear(true)}
           >
             <Trash2 size={14} />
-            <span>清空离线词库</span>
+            <span>删除离线词典</span>
           </button>
         )}
       </div>
@@ -221,7 +225,7 @@ export function DictSection({ s, onChange }: SectionProps) {
       {showConfirmClear && (
         <div className="result">
           <div className="dict-confirm-box">
-            <span className="dict-confirm-msg">确定清空本地离线词库？清空后查词将自动使用在线翻译，已收藏的生词库不受影响。</span>
+            <span className="dict-confirm-msg">删除离线词典后，查词将使用在线翻译。生词库中的收藏会保留。</span>
             <div className="dict-confirm-actions">
               <button
                 type="button"
@@ -235,7 +239,7 @@ export function DictSection({ s, onChange }: SectionProps) {
                   refreshMeta()
                 }}
               >
-                确认清空
+                确认删除词典
               </button>
               <button
                 type="button"
@@ -250,10 +254,10 @@ export function DictSection({ s, onChange }: SectionProps) {
       )}
 
       <details className="adv-details">
-        <summary>高级选项：自定义词库下载源</summary>
+        <summary>修改词典下载地址</summary>
         <div className="adv-details-body">
           <label className="field">
-            <span>数据源地址</span>
+            <span>词典下载地址</span>
             <input
               type="text"
               value={downloadUrl}
@@ -270,7 +274,7 @@ export function DictSection({ s, onChange }: SectionProps) {
               </button>
             )}
           </label>
-          <p className="hint">默认使用 Open Dictionary 官方发布的开源词库数据包（gzip 压缩）。</p>
+          <p className="hint">默认下载 Open Dictionary 的 <code>distribution.jsonl.gz</code> 文件，保存在当前浏览器中。修改地址后自动保存。</p>
         </div>
       </details>
     </Section>

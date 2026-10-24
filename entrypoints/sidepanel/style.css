@@ -775,3 +775,6 @@ input:focus-visible {
   white-space: nowrap;
   margin-top: 2px;
 }
+
+.sp-collection-feedback { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:8px; min-height:28px; font-size:12px; color:var(--ink-soft); }
+.sp-collection-feedback .sp-btn-subtle { padding:4px 8px; min-height:28px; }

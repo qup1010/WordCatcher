@@ -56,6 +56,9 @@ export default function App() {
   const [libraryCount, setLibraryCount] = useState(0)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'queued'>('idle')
   const [edits, setEdits] = useState<LearningEdits>({})
+  const [undoReceipt, setUndoReceipt] = useState<{ id: string, sequence: number } | null>(null)
+  const [undoBusy, setUndoBusy] = useState(false)
+  const [undoMessage, setUndoMessage] = useState('')
   const [savedContext, setSavedContext] = useState<string | undefined>()
   const [currentSentence, setCurrentSentence] = useState<string>('')
   const [editingSentence, setEditingSentence] = useState(false)
@@ -99,6 +102,8 @@ export default function App() {
     setLoading(true)
     setLookupError(null)
     setSaveError(null)
+    setUndoMessage('')
+    setUndoReceipt(null)
     setSaveState('idle')
     setDictionary(null)
     setTab('current')
@@ -229,6 +234,8 @@ export default function App() {
         setEntry(m.payload.entry)
         setEdits({})
         setSavedContext(undefined)
+        setUndoMessage('')
+        setUndoReceipt(null)
         setSaveState('idle')
         setSaveError(null)
         setQuery(m.payload.entry.word || m.payload.selection || '')
@@ -277,6 +284,8 @@ export default function App() {
     setLoading(true)
     setLookupError(null)
     setSaveError(null)
+    setUndoMessage('')
+    setUndoReceipt(null)
     setSaveState('idle')
     setDictionary(null)
 
@@ -328,6 +337,8 @@ export default function App() {
     if (!entry || loading || lookupError || saveState !== 'idle') return
     const sequence = lookupSequence.current
     setSaveError(null)
+    setUndoReceipt(null)
+    setUndoMessage('')
     setSaveState('saving')
     const selectionText = sourceMeta?.selection || entry.word
     const sentenceText = currentSentence.trim() || selectionText
@@ -350,14 +361,35 @@ export default function App() {
 
     if (sequence !== lookupSequence.current) return
     if (res.ok) {
+      setUndoReceipt(res.data.undoId ? { id: res.data.undoId, sequence } : null)
       setSavedContext(res.data.recordId)
       setSaveState(res.data.queued ? 'queued' : 'saved')
       void refreshHistory()
       void refreshLibraryCount()
     } else {
+      setUndoMessage('')
+      setUndoReceipt(null)
       setSaveState('idle')
       setSaveError(res.error)
     }
+  }
+
+  const onUndoSave = async () => {
+    if (!undoReceipt || undoReceipt.sequence !== lookupSequence.current || undoBusy) return
+    const receipt = undoReceipt
+    setUndoBusy(true)
+    try {
+      const res = await sendMessage({ type: 'undo-save', payload: { id: receipt.id } })
+      if (receipt.sequence !== lookupSequence.current) return
+      if (!res.ok) { setSaveError(res.error); return }
+      setUndoReceipt(null)
+      setSavedContext(undefined)
+      setSaveState('idle')
+      setUndoMessage('已撤销本次本地收藏')
+      void refreshLibraryCount()
+      void refreshHistory()
+    } catch (error) { if (receipt.sequence === lookupSequence.current) setSaveError(String(error)) }
+    finally { setUndoBusy(false) }
   }
 
   const onSpeak = (text: string) => {
@@ -405,6 +437,8 @@ export default function App() {
     setQuery(item.word)
     setEdits({})
     setSavedContext(undefined)
+    setUndoMessage('')
+    setUndoReceipt(null)
     setSaveState('idle')
     setLookupError(null)
     setSaveError(null)
@@ -423,6 +457,8 @@ export default function App() {
     setEditingSentence(false)
     setEdits(record.edits ?? {})
     setSavedContext(record.id)
+    setUndoMessage('')
+    setUndoReceipt(null)
     setSaveState('idle')
     setLookupError(null)
     setSaveError(null)
@@ -462,6 +498,8 @@ export default function App() {
       onTranslated={(t) => {
         setEntry(prev => prev ? { ...prev, contextTranslation: t } : prev)
         setEdits(prev => ({ ...prev, contextTranslation: t }))
+        setUndoMessage('')
+        setUndoReceipt(null)
         setSaveState('idle')
       }}
     />
@@ -631,6 +669,8 @@ export default function App() {
                           placeholder={`输入或粘贴包含「${sourceMeta?.selection || entry.word}」的原句…`}
                           onChange={(e) => {
                             setCurrentSentence(e.target.value)
+                            setUndoMessage('')
+                            setUndoReceipt(null)
                             setSaveState('idle')
                           }}
                         />
@@ -692,6 +732,7 @@ export default function App() {
               )}
 
               <div className="sp-card-actions">
+
                 <button
                   type="button"
                   className="sp-btn-save"
@@ -711,7 +752,7 @@ export default function App() {
                       已存入生词库
                     </>
                   )}
-                  {saveState === 'idle' && (savedContext ? '更新这条语境' : '存入生词库')}
+                  {saveState === 'idle' && (saveError ? '重试保存' : savedContext ? '更新这条语境' : '存入生词库')}
                 </button>
 
                 <button
@@ -725,6 +766,10 @@ export default function App() {
                   {entry.generation ? '重新生成' : 'AI 详解'}
                 </button>
               </div>
+              {(undoReceipt?.sequence === lookupSequence.current || undoMessage) && <div className="sp-collection-feedback" role="status">
+                <span>{undoMessage || '已存入生词库'}</span>
+                {undoReceipt?.sequence === lookupSequence.current && <button type="button" className="sp-btn-subtle" disabled={undoBusy} title="撤销本次本地收藏" aria-label="撤销本地收藏" onClick={() => void onUndoSave()}>撤销</button>}
+              </div>}
               {saveError && <div className="sp-inline-error" role="alert"><AlertCircle size={14} /><span>{saveError}</span></div>}
             </div>
           ) : loading ? (

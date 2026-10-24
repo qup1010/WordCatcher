@@ -57,6 +57,16 @@ beforeEach(() => {
   ;(startBackground as unknown as () => void)()
 })
 describe('learning background entry points', () => {
+  it('undo removes only the new local collection and its pending Anki job', async () => {
+    mock.addNote.mockRejectedValue(new Error('offline'))
+    const saved = await request({ type: 'save-card', payload: { ...context, entry, createdAt: 1 } })
+    expect(saved.data.undoId).toBeTruthy()
+    const duplicate = await request({ type: 'save-card', payload: { ...context, entry, createdAt: 1 } })
+    expect(duplicate.data.undoId).toBeUndefined()
+    expect((await request({ type: 'undo-save', payload: { id: saved.data.undoId } })).ok).toBe(true)
+    expect(await readLearning()).toHaveLength(0)
+    expect(await readPending()).toHaveLength(0)
+  })
   it('clears sentence translation cache when settings change and ignores stale in-flight results', async () => {
     mock.quickTranslate.mockResolvedValue({ translation: '当前译文' })
     const requestTranslation = () => request({

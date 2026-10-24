@@ -497,6 +497,7 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
             </button>
           </div>
 
+          <div className="learning-detail-label">当前语境义</div>
           <div className="sp-card-def">{selected.edits?.definition ?? selected.card.entry.definition}</div>
 
           <ContextBlock
@@ -511,10 +512,10 @@ export function LearningLibrary({ onOpen }: { onOpen: (record: LearningRecord) =
           <LearningDetails entry={selected.card.entry} note={selected.edits?.note} />
 
           {selected.card.entry.memoryHook && (
-            <div className="sp-hook">
-              <strong>记忆线索</strong>
-              <div>{selected.card.entry.memoryHook}</div>
-            </div>
+            <details className="learning-details">
+              <summary>记忆线索</summary>
+              <div className="learning-details-body">{selected.card.entry.memoryHook}</div>
+            </details>
           )}
 
           <div className="learning-meta-row">

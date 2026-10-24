@@ -48,6 +48,7 @@ export type Request =
   | { type: 'quick-translate', payload: { text: string, context?: LookupContextPayload } }
   | { type: 'translate-sentence', payload: { sentence: string, selection?: string, mode?: 'mt' | 'ai' } }
   | { type: 'save-card', payload: CapturedCard }
+  | { type: 'undo-save', payload: { id: string } }
   | { type: 'library-list' }
   | { type: 'library-update', payload: { id: string, edits: LearningEdits } }
   | { type: 'library-sync', payload: { id: string } }
@@ -94,7 +95,9 @@ export interface ResponseMap {
     pending?: number
     recordId?: string
     syncError?: string
+    undoId?: string
   }
+  'undo-save': null
   'library-list': LearningRecord[]
   'library-update': LearningRecord
   'library-sync': { noteId: number | null, queued: boolean, syncError?: string }

@@ -5,7 +5,7 @@ export interface ProviderPreset {
   /** 悬停时的完整说明（可选） */
   title?: string
   baseURL: string
-  /** 仅作文档/推荐参考，点预设时不会写入配置 */
+  /** 选择预设时，用于填充空模型或其他预设的默认模型。 */
   model: string
   hint?: string
 }
@@ -22,7 +22,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     title: '本地 Ollama',
     baseURL: 'http://127.0.0.1:11434/v1',
     model: 'qwen2.5',
-    hint: 'API key 随便填一个非空值即可。小模型可能不支持结构化输出，出错就换大一点的模型。',
+    hint: '按本地服务要求填写 API Key；未启用密钥校验时，可填写非空占位值。请先确认模型已安装，再用示例测试检查结构化输出。',
   },
 ]
 

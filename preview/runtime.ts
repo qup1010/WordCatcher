@@ -1,4 +1,4 @@
-import { contextKey, saveLearning, readLearning, updateLearning, exportLearning, markLearningSync } from '../lib/learning'
+import { contextKey, saveLearning, saveLearningWithReceipt, removeLearning, readLearning, updateLearning, exportLearning, markLearningSync } from '../lib/learning'
 import { formatQuickDictResult } from '../lib/open-dict/db'
 /** 仅供预览：服务全部使用内存示例数据，禁止触达真实账号、Anki 或设置。 */
 import { DEFAULT_SETTINGS, type HistoryItem } from '../lib/types'
@@ -44,7 +44,8 @@ export const browser = {
       if (req.type === 'pending-count') return ok({ count: scenario === 'offline' ? 3 : 0 })
       if (req.type === 'pending-list') return ok({ cards: [] })
       if (req.type === 'cache-stats') return ok({ size: 8 })
-      if (req.type === 'save-card') { const record = await saveLearning(req.payload); return ok({ noteId: null, queued: scenario === 'offline', pending: 3, recordId: record.id }) }
+      if (req.type === 'save-card') { const { record, created } = await saveLearningWithReceipt(req.payload); return ok({ noteId: null, queued: scenario === 'offline', pending: 3, recordId: record.id, undoId: created ? record.id : undefined }) }
+      if (req.type === 'undo-save') { await removeLearning(req.payload.id, 1); return ok(null) }
       if (req.type === 'library-list') return ok(await readLearning())
       if (req.type === 'library-export') return ok(await exportLearning())
       if (req.type === 'library-update') return ok(await updateLearning(req.payload.id, req.payload.edits))

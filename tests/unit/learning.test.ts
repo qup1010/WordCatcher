@@ -4,6 +4,7 @@ import {
   readLearning,
   readTombstones,
   saveLearning,
+  saveLearningWithReceipt,
   updateLearning,
   removeLearning,
   importLearning,
@@ -198,3 +199,19 @@ describe('context learning records', () => {
     expect(finalRecords.some(r => r.id === 'remote-new-1')).toBe(true)
   })
 })
+
+ it('issues undo receipts only for newly created contexts and preserves other contexts', async () => {
+   const first = await saveLearningWithReceipt(card())
+   expect(first.created).toBe(true)
+   expect((await saveLearningWithReceipt(card())).created).toBe(false)
+   const second = await saveLearningWithReceipt(card('I went to the bank.', '银行'))
+   await removeLearning(second.record.id, 1)
+   expect((await readLearning()).map(r => r.id)).toEqual([first.record.id])
+   expect((await readTombstones())[0].id).toBe(second.record.id)
+ })
+ it('refuses undo after a later edit', async () => {
+   const { record } = await saveLearningWithReceipt(card())
+   await updateLearning(record.id, { definition: '编辑后的释义' })
+   await expect(removeLearning(record.id, 1)).rejects.toThrow('后续修改')
+   expect((await readLearning())[0].edits?.definition).toBe('编辑后的释义')
+ })

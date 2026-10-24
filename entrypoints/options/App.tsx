@@ -138,7 +138,7 @@ export default function App() {
             <span className="brand-reading">/wɜːd ˈkætʃə(r)/</span>
             <span className="brand-pos">n.</span>
           </div>
-          <p className="brand-def">网页划词、语境解析与生词库复习工具。</p>
+          <p className="brand-def">查词、收藏原句，回顾阅读中的生词。</p>
         </div>
 
         <nav aria-label="设置分区">
@@ -162,46 +162,46 @@ export default function App() {
         <div className="side-status-card">
           <div className="side-status-title">
             <span className="side-status-dot" />
-            <span>服务就绪状态</span>
+            <span>配置概览</span>
           </div>
           <div className="side-status-list">
             <div className="status-row">
-              <span>离线词库</span>
+              <span>离线词典</span>
               <StatusChip
                 ok={dictReady}
-                okText="已就绪"
+                okText="已安装"
                 badText="未安装"
               />
             </div>
             <div className="status-row">
               <span>AI 详解</span>
-              <StatusChip ok={aiReady} okText="已配置" badText="未配置" />
+              <StatusChip ok={aiReady} okText="已填写" badText="未填写" />
             </div>
             <div className="status-row">
-              <span>Anki 拓展</span>
+              <span>Anki 连接</span>
               {!ankiEnabled
-                ? <span className="chip">已关闭</span>
+                ? <span className="chip">未启用</span>
                 : ankiAlive === null
                   ? <span className="chip">检测中</span>
                   : ankiAlive
                     ? <span className="chip chip-ok">已连接</span>
-                    : <span className="chip">按需启动</span>}
+                    : <span className="chip">未连接</span>}
             </div>
           </div>
 
           <div role={saveState === 'error' ? 'alert' : 'status'} className={`save-note save-note-show ${saveState === 'error' ? 'save-note-error' : ''}`}>
-            {saveState === 'idle' && <span>普通偏好即时保存</span>}
+            {saveState === 'idle' && <span>{dirty ? '有配置尚未保存' : '翻译、词典与操作选项自动保存'}</span>}
             {saveState === 'saving' && <span>保存中…</span>}
             {saveState === 'saved' && (
               <>
                 <Check size={12} />
-                <span>已保存</span>
+                <span>{dirty ? '有配置尚未保存' : '设置已保存'}</span>
               </>
             )}
             {saveState === 'error' && (
               <>
                 <AlertCircle size={12} />
-                <span>保存失败</span>
+                <span>保存失败，填写内容已保留</span>
                 <button type="button" className="save-retry" onClick={() => void persist(desired.current).catch(() => {})}>重试保存</button>
               </>
             )}
@@ -211,20 +211,20 @@ export default function App() {
 
       {/* ── 主内容 ── */}
       <main>
+        <p className="settings-save-help">翻译、词典和操作选项修改后自动保存。AI、WebDAV 和 Anki 配置需点击「保存配置」后生效；可先用当前填写内容测试连接。</p>
         <MtSection {...sectionProps} />
-        <DictSection {...sectionProps} />
+        <DictSection {...sectionProps} onMetaChange={setDictMeta} />
         <AiSection {...sectionProps} />
         <DataSection {...sectionProps} />
         <AnkiSection {...sectionProps} onAliveChange={setAnkiAlive} />
         <UxSection {...sectionProps} />
         <AboutSection {...sectionProps} />
 
-        <div className="settings-save-bar" role="status">
-          <span>{dirty ? '连接配置有未保存的修改' : '连接配置已保存'}</span>
+        {dirty && <div className="settings-save-bar" role="status">
+          <span>配置有未保存的修改</span>
           <button className="btn" disabled={!dirty || saveState === 'saving'} onClick={() => void flush().catch(() => {})}>保存配置</button>
           <button className="btn" disabled={!dirty || saveState === 'saving'} onClick={() => { desired.current = { ...s, ...connections(applied.current) }; setS(desired.current) }}>放弃修改</button>
-        </div>
-        <p className="foot-note">普通偏好即时保存。AI、WebDAV 与 Anki 连接配置需点击「保存配置」；测试连接使用当前填写内容。</p>
+        </div>}
       </main>
     </div>
   )

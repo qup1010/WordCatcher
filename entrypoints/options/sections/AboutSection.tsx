@@ -28,8 +28,8 @@ export function AboutSection(_props: SectionProps) {
     <Section
       id="sec-about"
       index={6}
-      title="关于 Word Catcher"
-      intro="开源、本地优先的网页划词查词、语境积累与复习工具。"
+      title="关于"
+      intro="查看版本、下载更新或反馈问题。"
     >
       <div className="about-card" style={{
         padding: '16px 18px',
@@ -44,7 +44,7 @@ export function AboutSection(_props: SectionProps) {
               Word Catcher <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--teal)', fontFamily: 'var(--font-sans)', background: 'var(--teal-wash)', padding: '2px 8px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hairline)', marginLeft: 6 }}>v{version}</span>
             </div>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
-              在阅读中随时查词，连同真实语境存入本地生词库，通过内置卡片自测或联动桌面端、Anki 高效复习。
+              选中文字查看释义，把单词和原句收藏到生词库。可用内置卡片复习，也可同步到 Anki。
             </p>
           </div>
         </div>
@@ -65,7 +65,7 @@ export function AboutSection(_props: SectionProps) {
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
           >
             <GithubIcon size={15} />
-            <span>GitHub 仓库主页</span>
+            <span>项目主页</span>
             <ExternalLink size={12} style={{ opacity: 0.7 }} />
           </a>
 
@@ -77,7 +77,7 @@ export function AboutSection(_props: SectionProps) {
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
           >
             <Sparkles size={14} />
-            <span>版本发布 (Releases)</span>
+            <span>下载新版</span>
             <ExternalLink size={12} style={{ opacity: 0.7 }} />
           </a>
 
@@ -89,7 +89,7 @@ export function AboutSection(_props: SectionProps) {
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
           >
             <MessageSquare size={14} />
-            <span>反馈建议与 Issue</span>
+            <span>反馈问题</span>
             <ExternalLink size={12} style={{ opacity: 0.7 }} />
           </a>
         </div>

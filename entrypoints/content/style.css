@@ -980,3 +980,12 @@
 .wc-def { white-space: pre-wrap; }
 
 .wc-head-main > .wc-word-sentence { flex-basis: auto; }
+
+/* Keep primary actions separate from collection and recovery feedback. */
+.wc-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 24px; margin-top: 8px; font-size: 12px; color: var(--ink-soft); }
+.wc-feedback:empty { display: none; }
+.wc-feedback > .wc-error, .wc-feedback > [role="status"] { flex-basis: 100%; }
+.wc-feedback .wc-btn { margin-left: auto; order: 2; min-height: 28px; padding: 4px 8px; font-size: 12px; }
+.wc-actions-result { position: sticky; bottom: 0; z-index: 4; background: var(--card); padding-bottom: 10px; }
+.wc-actions .wc-btn { min-height: 34px; }
+.wc-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }

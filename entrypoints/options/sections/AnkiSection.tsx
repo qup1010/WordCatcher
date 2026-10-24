@@ -1,5 +1,5 @@
 import { ExternalLink, Inbox, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { contextKey } from '@/lib/learning'
 import { sendMessage } from '@/lib/messaging'
 import type { CapturedCard, Settings } from '@/lib/types'
@@ -24,11 +24,16 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [queue, setQueue] = useState<CapturedCard[]>([])
   const [queueStatus, setQueueStatus] = useState<Status>({ kind: 'idle' })
+  const [showConfirmClearQueue, setShowConfirmClearQueue] = useState(false)
 
   const ankiEnabled = s.anki.enabled !== false
+  const currentConfig = useRef('')
+  currentConfig.current = JSON.stringify(s.anki)
 
-  const patchAnki = (part: Partial<Settings['anki']>) =>
+  const patchAnki = (part: Partial<Settings['anki']>) => {
+    setStatus({ kind: 'idle' })
     onChange({ ...s, anki: { ...s.anki, ...part } })
+  }
 
   const refreshIntegrations = () => {
     void sendMessage({ type: 'pending-list' }).then((res) => {
@@ -39,8 +44,10 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
   useEffect(refreshIntegrations, [])
 
   const onTest = async () => {
+    const requestedConfig = currentConfig.current
     setStatus({ kind: 'busy' })
     const res = await sendMessage({ type: 'check-anki', payload: { settings: s } })
+    if (requestedConfig !== currentConfig.current) return
     if (!res || !res.ok) {
       onAliveChange(false)
       setStatus({ kind: 'err', text: res?.error ?? '扩展后台未响应，请重新加载扩展后再试。' })
@@ -48,7 +55,7 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
     }
     onAliveChange(true)
 
-    setStatus({ kind: 'ok', text: `连接成功（AnkiConnect v${res.data.version}）。保存配置后用于制卡。` })
+    setStatus({ kind: 'ok', text: `已连接 Anki（AnkiConnect v${res.data.version}）。` })
   }
 
   const onFlush = async () => {
@@ -77,10 +84,14 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
   }
 
   const onClearQueue = async () => {
+    setShowConfirmClearQueue(false)
+    setQueueStatus({ kind: 'busy' })
     const res = await sendMessage({ type: 'clear-pending' })
     if (res.ok) {
       refreshIntegrations()
-      setQueueStatus({ kind: 'ok', text: '待同步队列已清空。' })
+      setQueueStatus({ kind: 'ok', text: '待同步队列已清空，生词库中的收藏已保留。' })
+    } else {
+      setQueueStatus({ kind: 'err', text: res.error })
     }
   }
 
@@ -89,12 +100,12 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
       id="sec-anki"
       index={4}
       title="Anki 制卡（可选）"
-      intro="生词保存在生词库中，可按需制作 Anki 卡片。插件与桌面端的词库同步统一在「词库与同步」中配置 WebDAV。"
+      intro="将收藏制作成 Anki 复习卡片。先安装 AnkiConnect，并保持 Anki 桌面版运行，再测试连接。"
     >
       {/* ── Anki 制卡拓展 ── */}
       <div className="block">
         <div className="block-head">
-          <strong>Anki 制卡同步拓展</strong>
+          <strong>将收藏同步到 Anki</strong>
           <HelpTip title="如何配置 AnkiConnect 插件？">
             <ol>
               <li>打开 <a href="https://apps.ankiweb.net/" target="_blank" rel="noreferrer">Anki 桌面版</a>；</li>
@@ -110,7 +121,7 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
           </HelpTip>
         </div>
         <p className="block-hint">
-          将保存的词条自动生成 4 种模式的 Anki 复习卡片（语境填空、看词识义、看义写词、听音辨词）。不使用 Anki 时可关闭此开关。
+          开启后，收藏会生成语境填空、看词识义、看义写词和听音辨词卡片。不使用 Anki 也可以正常查词和收藏。
         </p>
 
         <div className="field" style={{ marginTop: 14 }}>
@@ -121,7 +132,7 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
               onChange={enabled => patchAnki({ enabled })}
             />
             <span className="field-inline-label">
-              {ankiEnabled ? '保存词条时自动同步至 Anki（离线时暂存队列）' : '已关闭（仅保存在插件内置生词库）'}
+              {ankiEnabled ? '收藏时发送到 Anki，连接失败的卡片会暂存到下方。' : '关闭后，收藏仍保存在生词库。'}
             </span>
           </div>
         </div>
@@ -132,6 +143,7 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
               <span>AnkiConnect 地址</span>
               <input value={s.anki.url} onChange={e => patchAnki({ url: e.target.value })} />
             </label>
+            <p className="hint">本机默认地址为 <code>http://127.0.0.1:8765</code>。需先在 Anki 中安装 AnkiConnect。</p>
 
             <label className="field" style={{ marginTop: 12 }}>
               <span>目标牌组</span>
@@ -160,9 +172,10 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
 
             <div className="row" style={{ marginTop: 16 }}>
               <button className="btn" onClick={() => void onTest()} disabled={status.kind === 'busy'}>
-                {status.kind === 'busy' ? '检测中…' : '测试连接并更新卡片模板'}
+                {status.kind === 'busy' ? '正在测试…' : '测试 Anki 连接'}
               </button>
             </div>
+            {connectionsDirty && <p className="hint">可先测试连接；点击「保存配置」后，这些设置才会用于制卡。</p>}
 
             {status.kind === 'ok' && <p className="ok">{status.text}</p>}
             {status.kind === 'err' && (
@@ -173,7 +186,7 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
                   <ol>
                     <li>确认 Anki 桌面版正在运行。</li>
                     <li>在 Anki「工具 → 附加组件」中确认已安装 AnkiConnect（代码 <code>2055492159</code>）。</li>
-                    <li>若仍无法连接，可在 AnkiConnect 配置的 <code>webCorsOriginList</code> 中添加 <code>"*"</code> 后重启 Anki。</li>
+                    <li>检查上方地址。若错误提示来源未获允许，请按 AnkiConnect 项目说明授权当前扩展来源。</li>
                   </ol>
                 </details>
               </div>
@@ -187,11 +200,11 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
         <div className="block">
           <div className="block-head">
             <Inbox size={14} className="inline-icon" />
-            <strong>Anki 待同步队列</strong>
+            <strong>待同步到 Anki 的卡片</strong>
             {queue.length > 0 && <span className="chip">{queue.length}</span>}
           </div>
           <p className="block-hint">
-            Anki 未运行时保存的卡片会暂存在此处（词条本身已保存在本地生词库）。打开 Anki 后可一键补写。
+            这些收藏已保存在生词库。打开 Anki 后，点击「立即同步到 Anki」重试；移出或清空队列只会取消发送任务。
           </p>
 
           {queue.length === 0
@@ -221,13 +234,21 @@ export function AnkiSection({ s, onChange, connectionsDirty, onAliveChange }: An
                   <div className="block-actions">
                     <button
                       className="btn"
-                      disabled={queueStatus.kind === 'busy'}
+                      disabled={!ankiEnabled || queueStatus.kind === 'busy'}
                       onClick={() => void onFlush()}
                     >
-                      {queueStatus.kind === 'busy' ? '同步中…' : '立即同步至 Anki'}
+                      {queueStatus.kind === 'busy' ? '正在同步…' : '立即同步到 Anki'}
                     </button>
-                    <button className="btn" onClick={() => void onClearQueue()}>清空队列</button>
+                    <button className="btn" disabled={queueStatus.kind === 'busy'} onClick={() => setShowConfirmClearQueue(true)}>清空待同步队列</button>
                   </div>
+                  {!ankiEnabled && <p className="hint">开启并保存 Anki 配置后，可继续同步这些卡片。</p>}
+                  {showConfirmClearQueue && <div className="result">
+                    <p>清空后，这些卡片将不再发送到 Anki。生词库中的收藏会保留。</p>
+                    <div className="block-actions">
+                      <button className="btn btn-danger" disabled={queueStatus.kind === 'busy'} onClick={() => void onClearQueue()}>确认清空队列</button>
+                      <button className="btn" onClick={() => setShowConfirmClearQueue(false)}>取消</button>
+                    </div>
+                  </div>}
                 </>
               )}
 

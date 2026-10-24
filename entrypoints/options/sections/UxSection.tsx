@@ -58,29 +58,29 @@ export function UxSection({ s, onChange }: SectionProps) {
       id="sec-ux"
       index={5}
       title="操作与显示"
-      intro="设置网页划选文本时的触发行为、防误触规则与发音语速。"
+      intro="选择划词后显示什么、在哪些网站启用，以及如何朗读。"
     >
       <div className="field">
         <span>触发方式</span>
         <Segmented
           value={s.triggerMode}
           options={[
-            { value: 'icon', label: '先显示操作胶囊' },
+            { value: 'icon', label: '先显示查词按钮' },
             { value: 'quick', label: '直接查词' },
           ]}
           onChange={triggerMode => onChange({ ...s, triggerMode })}
         />
       </div>
       <p className="hint">
-        「操作胶囊」可按需选择快译或 AI 详解；「直接查词」优先查询本地离线词典，未命中时使用在线快译。
+        「先显示查词按钮」让你选择快译或 AI 详解；「直接查词」会在划选后立即查询。
       </p>
 
       <div className="field">
-        <span>辅助按键</span>
+        <span>划词辅助键</span>
         <Segmented
           value={s.modifierKey || 'none'}
           options={[
-            { value: 'none', label: '直接划选' },
+            { value: 'none', label: '无需按键' },
             { value: 'alt', label: '按住 Alt' },
             { value: 'ctrl', label: '按住 Ctrl' },
             { value: 'shift', label: '按住 Shift' },
@@ -89,7 +89,7 @@ export function UxSection({ s, onChange }: SectionProps) {
         />
       </div>
       <p className="hint">
-        设置辅助键后，需在划选文本的同时按住该键才会唤起查词面板，防止日常阅读复制时误触。
+        选定辅助键后，需按住该键划选文字才会出现查词面板。
       </p>
 
       <div className="field">
@@ -100,13 +100,13 @@ export function UxSection({ s, onChange }: SectionProps) {
             onChange={doubleClickLookup => onChange({ ...s, doubleClickLookup })}
           />
           <span className="field-inline-label">
-            双击单词时跳过操作胶囊，直接展开在线快译
+            双击单词后直接查词，也会优先使用离线词典
           </span>
         </div>
       </div>
 
       <div className="field field-top">
-        <span>禁用网站</span>
+        <span>不启用划词的网站</span>
         <div className="domain-manager">
           {blacklist.length > 0 && (
             <div className="domain-chips">
@@ -117,7 +117,7 @@ export function UxSection({ s, onChange }: SectionProps) {
                     type="button"
                     className="domain-chip-remove"
                     title={`移除 ${domain}`}
-                    aria-label={`移除禁用域名 ${domain}`}
+                    aria-label={`恢复在 ${domain} 上划词`}
                     onClick={() => removeDomain(domain)}
                   >
                     <X size={12} />
@@ -131,7 +131,7 @@ export function UxSection({ s, onChange }: SectionProps) {
             <input
               type="text"
               value={domainInput}
-              placeholder="输入域名（如 github.com），回车添加"
+              placeholder="例如 github.com，按 Enter 添加"
               onChange={e => setDomainInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
@@ -152,7 +152,7 @@ export function UxSection({ s, onChange }: SectionProps) {
           </div>
 
           <div className="domain-presets">
-            <span className="domain-presets-label">常用排除：</span>
+            <span className="domain-presets-label">快速添加：</span>
             {COMMON_BLACKLIST_DOMAINS.filter(d => !blacklist.includes(d)).map(domain => (
               <button
                 key={domain}
@@ -167,11 +167,11 @@ export function UxSection({ s, onChange }: SectionProps) {
         </div>
       </div>
       <p className="hint">
-        在以上域名下不触发划词弹窗，避免干扰代码编写或在线文档协作。
+        这些网站上不显示划词面板，仍可点击浏览器工具栏中的扩展图标手动查词。
       </p>
 
       <label className="field">
-        <span>默认学习语言</span>
+        <span>默认朗读语言</span>
         <select
           value={currentLang?.label ?? ''}
           onChange={(e) => {
@@ -189,15 +189,17 @@ export function UxSection({ s, onChange }: SectionProps) {
         </select>
       </label>
 
+      <p className="hint">未识别出语种时使用此语言。也会修改 Anki 卡片的发音语言，这部分需点击「保存配置」。</p>
+
       <div className="field">
-        <span>语种识别</span>
+        <span>自动识别朗读语言</span>
         <div className="field-inline">
           <Switch
             checked={s.tts.autoDetect ?? true}
             onChange={autoDetect => patchTts({ autoDetect })}
           />
           <span className="field-inline-label">
-            朗读时自动识别文本语种（如日语、韩语、法语、德语）
+            根据文本选择朗读语言；关闭时使用上方默认语言
           </span>
         </div>
       </div>
@@ -231,7 +233,7 @@ export function UxSection({ s, onChange }: SectionProps) {
             title="试听当前语言和语速"
           >
             <Volume2 size={14} />
-            <span>试听发音</span>
+            <span>试听</span>
           </button>
         )}
       </div>

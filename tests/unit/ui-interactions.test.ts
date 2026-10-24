@@ -100,3 +100,17 @@ it.each([SidePanel, Popup])('shows history load failures instead of an empty-his
   await click(Component === Popup ? '重新加载' : '重试')
   expect(host.textContent).toContain('remember')
 })
+
+it('sidepanel can undo a new collection and save again', async () => {
+  mock.send.mockImplementation(async (req: {type:string}) => {
+    if (req.type === 'save-card') return {ok:true,data:{queued:true,recordId:'fresh',undoId:'fresh'}}
+    if (req.type === 'undo-save') return {ok:true,data:null}
+    return {ok:true,data:[item]}
+  })
+  await mount(SidePanel); await click('查词历史 (1)')
+  await act(async () => { host.querySelector<HTMLElement>('.sp-history-item')!.click() })
+  await click('存入生词库'); await click('撤销')
+  expect(mock.send.mock.calls.some(([req]) => req.type === 'undo-save' && req.payload.id === 'fresh')).toBe(true)
+  expect(host.querySelector('.sp-btn-save')?.textContent).toBe('存入生词库')
+  expect(host.textContent).toContain('已撤销本次本地收藏')
+})

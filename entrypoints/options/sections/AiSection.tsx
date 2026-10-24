@@ -1,5 +1,5 @@
 import { Eye, EyeOff, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { sendMessage } from '@/lib/messaging'
 import { activeAiProfile } from '@/lib/settings'
 import type { AiProfile, WordEntry } from '@/lib/types'
@@ -33,6 +33,8 @@ export function AiSection({ s, onChange }: SectionProps) {
 
   const active = activeAiProfile(s)
   const matchedPreset = matchProviderPreset(active.baseURL)
+  const currentConfig = useRef('')
+  currentConfig.current = JSON.stringify(s.ai)
 
   const resetFeedback = () => {
     setModels([])
@@ -41,7 +43,10 @@ export function AiSection({ s, onChange }: SectionProps) {
     setTest({ kind: 'idle' })
   }
 
-  const patchProfile = (part: Partial<AiProfile>) =>
+  const patchProfile = (part: Partial<AiProfile>) => {
+    setTest({ kind: 'idle' })
+    setModelsStatus({ kind: 'idle' })
+    if ('baseURL' in part || 'apiKey' in part) setModels([])
     onChange({
       ...s,
       ai: {
@@ -49,6 +54,7 @@ export function AiSection({ s, onChange }: SectionProps) {
         profiles: s.ai.profiles.map(p => (p.id === s.ai.activeId ? { ...p, ...part } : p)),
       },
     })
+  }
 
   /**
    * 点服务商预设：填入对应的 Base URL，且当模型为空或仍处于其他预设默认模型时，
@@ -101,11 +107,15 @@ export function AiSection({ s, onChange }: SectionProps) {
   }
 
   const onFetchModels = async () => {
+    const requestedConfig = currentConfig.current
     setModelsStatus({ kind: 'busy' })
     const res = await sendMessage({ type: 'list-models', payload: { settings: s } })
+    if (requestedConfig !== currentConfig.current) return
     if (res.ok) {
       setModels(res.data.models)
-      setModelsStatus({ kind: 'ok', text: `已获取 ${res.data.models.length} 个可用模型` })
+      setModelsStatus({ kind: 'ok', text: res.data.models.length > 0
+        ? `已获取 ${res.data.models.length} 个模型，请选择要使用的模型。`
+        : '服务未提供模型列表，请手动填写模型名称。' })
       setModelOpen(true)
     } else {
       setModelsStatus({ kind: 'err', text: res.error })
@@ -113,8 +123,10 @@ export function AiSection({ s, onChange }: SectionProps) {
   }
 
   const onTest = async () => {
+    const requestedConfig = currentConfig.current
     setTest({ kind: 'busy' })
     const res = await sendMessage({ type: 'test-ai', payload: { settings: s } })
+    if (requestedConfig !== currentConfig.current) return
     if (!res.ok) {
       setTest({ kind: 'err', text: res.error })
       return
@@ -131,7 +143,7 @@ export function AiSection({ s, onChange }: SectionProps) {
       id="sec-ai"
       index={2}
       title="AI 详解"
-      intro="结合原句语境解析词义、固定搭配与用法，并翻译整句。支持所有兼容 OpenAI 协议的服务商。"
+      intro="用 AI 结合原句解释词义和用法。填写服务地址、API Key 和模型后，可先测试示例释义。"
     >
       <div className="profiles">
         {s.ai.profiles.map(p => (
@@ -147,7 +159,7 @@ export function AiSection({ s, onChange }: SectionProps) {
         <button
           type="button"
           className="profile-chip profile-add"
-          title="新增一套 AI 配置"
+          title="复制当前配置，新增一套 AI 配置"
           onClick={addProfile}
         >
           <Plus size={13} />
@@ -161,7 +173,7 @@ export function AiSection({ s, onChange }: SectionProps) {
           <button
             type="button"
             className="btn btn-icon btn-danger"
-            title="删除当前配置"
+            title="删除当前配置，保存后生效"
             onClick={removeProfile}
           >
             <Trash2 size={14} />
@@ -191,7 +203,7 @@ export function AiSection({ s, onChange }: SectionProps) {
                 role="radio"
                 aria-checked={on}
                 className={`provider-chip ${on ? 'provider-on' : ''}`}
-                title={p.title ? `${p.title}（推荐模型：${p.model}）` : `推荐模型：${p.model}`}
+                title={p.title ? `${p.title}（默认模型：${p.model}）` : `默认模型：${p.model}`}
                 onClick={() => applyProviderPreset(p)}
               >
                 {p.label}
@@ -201,7 +213,7 @@ export function AiSection({ s, onChange }: SectionProps) {
         </div>
       </div>
       <p className="hint">
-        选择预设将自动填入接口地址与推荐模型。
+        选择预设后，请核对接口地址和模型名称，再填写自己的 API Key。
         {matchedPreset?.hint ? ` ${matchedPreset.hint}` : ''}
       </p>
 
@@ -213,12 +225,13 @@ export function AiSection({ s, onChange }: SectionProps) {
           onChange={e => patchProfile({ baseURL: e.target.value })}
         />
       </label>
-      <p className="hint">通常以 <code>/v1</code> 或 <code>/v4</code> 等版本路径结尾。</p>
+      <p className="hint">填写服务商提供的 Base URL（接口基础地址），通常包含 <code>/v1</code>；不要填写完整的 <code>/chat/completions</code> 地址。</p>
 
       <div className="field">
         <span>API Key</span>
         <input
           type={showKey ? 'text' : 'password'}
+          aria-label="API Key"
           value={active.apiKey}
           placeholder="sk-…"
           onChange={e => patchProfile({ apiKey: e.target.value })}
@@ -233,7 +246,7 @@ export function AiSection({ s, onChange }: SectionProps) {
           {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
       </div>
-      <p className="hint">密钥仅保存在当前浏览器本地存储中，不会上传至第三方服务器。</p>
+      <p className="hint">API Key 以明文保存在当前浏览器本地，查询和测试时会发送给上方配置的 AI 服务。</p>
 
       <div className="field">
         <span>模型名称</span>
@@ -258,14 +271,14 @@ export function AiSection({ s, onChange }: SectionProps) {
       </div>
       {matchedPreset && active.model !== matchedPreset.model && (
         <p className="hint">
-          当前服务商推荐使用 <code>{matchedPreset.model}</code>，
+          预设的默认模型为 <code>{matchedPreset.model}</code>，
           <button
             type="button"
             className="save-retry"
             style={{ marginLeft: 4 }}
             onClick={() => patchProfile({ model: matchedPreset.model })}
           >
-            点击填入
+            使用默认模型
           </button>
         </p>
       )}
@@ -274,13 +287,15 @@ export function AiSection({ s, onChange }: SectionProps) {
 
       <div className="row">
         <button className="btn" onClick={() => void onTest()} disabled={test.kind === 'busy'}>
-          {test.kind === 'busy' ? '正在生成示例释义…' : '测试连接并预览释义效果'}
+          {test.kind === 'busy' ? '正在生成示例释义…' : '测试 AI 详解'}
         </button>
       </div>
 
+      <p className="hint">测试使用当前填写的配置生成示例释义。确认效果后，点击「保存配置」用于查词。</p>
+
       {test.kind === 'ok' && (
         <div className="result">
-          <p className="ok">连接成功。以下是当前模型对示例语境的实际解析效果：</p>
+          <p className="ok">测试成功，示例释义如下。</p>
           <SamplePreview entry={test.sample} />
         </div>
       )}
@@ -288,11 +303,11 @@ export function AiSection({ s, onChange }: SectionProps) {
       {test.kind === 'no-structured' && (
         <div className="result">
           <p className="warn">
-            接口已连通，但当前模型未能返回结构化 JSON 数据，AI 详解将无法正常工作。请更换支持结构化输出的模型。
+            服务已响应，但示例释义未能生成。请更换模型，或检查服务是否支持结构化输出后重试。
           </p>
           {test.reply && (
             <>
-              <p className="hint">模型对普通对话的回复：</p>
+              <p className="hint">服务返回的普通对话内容：</p>
               <div className="reply">{test.reply}</div>
             </>
           )}

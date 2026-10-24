@@ -40,15 +40,19 @@ async function click(text: string) {
   await act(async () => { Array.from(host.querySelectorAll('button')).find(b => b.textContent === text)!.click() })
 }
 it('keeps connection edits as drafts and does not include them in ordinary preference writes', async () => {
-  await mount(); await change('Draft deck')
+  await mount()
+  expect(host.querySelector('.settings-save-bar')).toBeNull()
+  await change('Draft deck')
   expect(mock.save).not.toHaveBeenCalled()
   await click('切换语言')
   expect(mock.save.mock.calls[0][0].anki.deckName).toBe(DEFAULT_SETTINGS.anki.deckName)
   expect(mock.save.mock.calls[0][0].explainLanguage).toBe('English')
   expect(host.textContent).toContain('未保存的修改')
+  expect(host.querySelector('.save-note')?.textContent).toContain('有配置尚未保存')
   await click('保存配置')
   expect(mock.save.mock.calls[1][0].anki.deckName).toBe('Draft deck')
-  expect(host.textContent).toContain('连接配置已保存')
+  expect(host.textContent).toContain('设置已保存')
+  expect(host.querySelector('.settings-save-bar')).toBeNull()
 })
 it('discards connections while retaining ordinary preferences', async () => {
   await mount(); await change('Discard me'); await click('切换语言'); await click('放弃修改')
@@ -71,7 +75,7 @@ it('retries failed configuration saves without an artificial edit', async () => 
   await click('重试保存')
   expect(mock.save).toHaveBeenCalledTimes(2)
   expect(mock.save.mock.calls[1][0].anki.deckName).toBe('Retry me')
-  expect(host.textContent).toContain('连接配置已保存')
+  expect(host.textContent).toContain('设置已保存')
 })
 it('shows an actionable load error instead of a blank settings page', async () => {
   mock.get.mockRejectedValue(new Error('storage unavailable'))

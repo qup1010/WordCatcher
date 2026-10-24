@@ -366,6 +366,7 @@ type SaveState =
   | { kind: 'idle' }
   | { kind: 'saving' }
   | { kind: 'saved' }
+  | { kind: 'undone' }
   /** Anki 没开，卡片进了待写队列，等它起来再补写 */
   | { kind: 'queued', pending: number }
   | { kind: 'failed', message: string }
@@ -398,7 +399,16 @@ function placeAt(rect: DOMRect, width: number, height: number) {
 export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [phase, setPhase] = useState<Phase>({ kind: 'hidden' })
+  const completedPhase = useRef<Phase | null>(null)
+  const [lookupError, setLookupError] = useState('')
   const [save, setSave] = useState<SaveState>({ kind: 'idle' })
+  const [undoId, setUndoId] = useState<string | null>(null)
+  const [undoBusy, setUndoBusy] = useState(false)
+  const [undoError, setUndoError] = useState('')
+  const session = useRef(0)
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelClose = () => { if (closeTimer.current) clearTimeout(closeTimer.current); closeTimer.current = null }
+  useEffect(() => () => { session.current++; cancelClose() }, [])
   const [anchor, setAnchor] = useState<Anchor | null>(null)
   const [dupe, setDupe] = useState<Dupe>('unknown')
   const [pinned, setPinned] = useState(false)
@@ -432,10 +442,16 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   }, [])
 
   const dismiss = useCallback(() => {
+    session.current++
+    cancelClose()
+    setUndoId(null)
+    setUndoError('')
     stopSpeaking()
     // 关掉面板就没人看结果了，别让流继续跑
     streamRef.current?.()
     streamRef.current = null
+    completedPhase.current = null
+    setLookupError('')
     setPhase({ kind: 'hidden' })
     setSave({ kind: 'idle' })
     setDupe('unknown')
@@ -449,6 +465,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   }, [])
 
   const togglePin = useCallback(() => {
+    cancelClose()
     setPinned((prev) => {
       const next = !prev
       if (next) {
@@ -523,13 +540,20 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
    * 先把旧的取消掉，否则两条流会交替往同一个面板里写。
    */
   const lookup = useCallback((ctx: SelectionContext, bypassCache = false) => {
+    const version = ++session.current
+    const previous = completedPhase.current
+    setLookupError('')
+    cancelClose()
+    setUndoId(null)
     streamRef.current?.()
     setSave({ kind: 'idle' })
     setPhase({ kind: 'loading' })
 
     streamRef.current = openEntryStream({ ...ctx, pageUrl: location.href, pageTitle: document.title, sentenceOffset: ctx.offset, bypassCache }, {
-      onPartial: partial => setPhase({ kind: 'streaming', partial }),
+      onPartial: partial => { if (version === session.current) setPhase({ kind: 'streaming', partial }) },
       onDone: (entry) => {
+        if (version !== session.current) return
+        completedPhase.current = { kind: 'result', entry }
         streamRef.current = null
         setPhase({ kind: 'result', entry })
         browser.runtime.sendMessage({
@@ -539,12 +563,21 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       },
       onError: (message) => {
         streamRef.current = null
-        setPhase({ kind: 'error', message })
+        if (version !== session.current) return
+        if (previous) { setLookupError(message); setPhase(previous) }
+        else setPhase({ kind: 'error', message })
       },
     })
   }, [])
 
   const quickLookup = useCallback(async (ctx: SelectionContext) => {
+    const version = ++session.current
+    cancelClose()
+    streamRef.current?.()
+    streamRef.current = null
+    setUndoId(null)
+    setSave({ kind: 'idle' })
+    setLookupError('')
     setOverrideDef(null)
     setLearningEdits({})
     setQuickContextTrans('')
@@ -562,6 +595,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         },
       },
     })
+    if (version !== session.current) return
     if (!res.ok) {
       setPhase({ kind: 'quick-error', message: res.error })
       return
@@ -645,9 +679,17 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     return () => observer.disconnect()
   }, [phase.kind, expandHook])
 
+  useEffect(() => {
+    if (phase.kind === 'quick' || phase.kind === 'result') completedPhase.current = phase
+  }, [phase])
+
   const saveCard = useCallback(async (entry: WordEntry, edits?: LearningEdits) => {
     if (!anchor) return
 
+    const version = session.current
+    cancelClose()
+    setUndoId(null)
+    setUndoError('')
     setSave({ kind: 'saving' })
     const res = await sendMessage({
       type: 'save-card',
@@ -664,6 +706,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       },
     })
 
+    if (version !== session.current) return
     if (!res.ok) {
       setSave({ kind: 'failed', message: res.error })
       return
@@ -674,6 +717,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
       payload: { word: entry.word, queued: Boolean(res.data.queued) },
     }).catch(() => {})
 
+    setUndoId(res.data.undoId ?? null)
     if (res.data.queued) {
       setSave({ kind: 'queued', pending: res.data.pending ?? 1 })
       return
@@ -681,8 +725,32 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
 
     setSave({ kind: 'saved' })
     setDupe('yes')
-    if (!pinned) setTimeout(dismiss, 1200)
+    if (!pinned) closeTimer.current = setTimeout(() => { if (version === session.current) dismiss() }, res.data.undoId ? 5000 : 1200)
   }, [anchor, dismiss, dupe, pinned])
+
+  const undoSave = async () => {
+    if (!undoId || undoBusy) return
+    const version = session.current
+    cancelClose()
+    setUndoBusy(true)
+    setUndoError('')
+    try {
+      const response = await sendMessage({ type: 'undo-save', payload: { id: undoId } })
+      if (version !== session.current) return
+      if (!response.ok) { setUndoError(response.error); return }
+      setUndoId(null)
+      setDupe('no')
+      setSave({ kind: 'undone' })
+    } catch (error) { if (version === session.current) setUndoError(String(error)) }
+    finally { setUndoBusy(false) }
+  }
+  const undoFeedback = <div className="wc-feedback" role="status">
+    {lookupError && <span className="wc-error" role="alert">{lookupError} <button type="button" className="wc-link" onClick={() => anchor && lookup(anchor.ctx, true)}>重试 AI</button></span>}
+    {undoId && <button type="button" className="wc-btn wc-btn-ghost" disabled={undoBusy} onClick={() => void undoSave()} title="撤销本次本地收藏" aria-label="撤销本地收藏">撤销</button>}
+    {save.kind === 'undone' && <span className="wc-note" role="status">已撤销本次本地收藏{settings.anki.enabled !== false ? '；已发送到 Anki 的卡片可在 Anki 中删除。' : ''}</span>}
+    {undoError && <span className="wc-error" role="alert">{undoError}</span>}
+    {(save.kind === 'saved' || save.kind === 'queued') && <span className="wc-note wc-note-ok">已存入生词库</span>}
+  </div>
 
   const onSave = useCallback(async () => {
     if (phase.kind !== 'result') return
@@ -789,6 +857,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         if (!ctx) return
 
         const rect = range.getBoundingClientRect()
+        session.current++
+        completedPhase.current = null
+        setLookupError('')
+        cancelClose()
+        setUndoId(null)
+        setUndoError('')
         setAnchor({ ctx, range: range.cloneRange(), rect })
         setSave({ kind: 'idle' })
         setOverrideDef(null)
@@ -913,7 +987,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
           <div className="wc-pill-sep" />
           <button type="button" title="结合语境进行 AI 释义" onClick={() => lookup(anchor.ctx)}>
             <Sparkles size={14} />
-            <span>AI 释义</span>
+            <span>AI 详解</span>
           </button>
         </div>
       </div>
@@ -925,7 +999,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
     const rawSelection = anchor.ctx.selection.trim()
     const isLongText = isSentenceSelection(rawSelection)
     const panelWidth = isLongText ? QUICK_LONG_WIDTH : QUICK_WIDTH
-    const pos = placeAt(anchor.rect, panelWidth, size.height || 90)
+    const pos = placeAt(anchor.rect, panelWidth, Math.min(460, window.innerHeight - 16))
     const isDict = phase.kind === 'quick' && phase.mode === 'dict'
     const wordToSpeak = isDict ? phase.dict.headword : anchor.ctx.selection
     const dictReading = isDict ? phase.dict.reading?.replace(/^\/+|\/+$/g, '') : ''
@@ -948,7 +1022,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
           role="dialog"
           aria-label={isLongText ? '在线快译' : `「${anchor.ctx.selection}」的快速查词`}
         >
-          <div className="wc-fade" key={phase.kind} aria-live="polite">
+          <div className="wc-fade" aria-live="polite">
             <div
               className="wc-drag-bar"
               title="按住拖拽移动卡片"
@@ -1163,14 +1237,15 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 onClick={() => lookup(anchor.ctx)}
               >
                 <Sparkles size={14} />
-                <span>AI 释义</span>
+                <span>AI 详解</span>
               </button>
               <div className="wc-spacer" />
               <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
             </div>
 
+            {undoFeedback}
             {save.kind === 'failed' && (
-              <div className="wc-error" role="alert" style={{ marginTop: 8 }}>{save.message}</div>
+              <div className="wc-error" role="alert" style={{ marginTop: 8 }}>{save.message} <button type="button" className="wc-link" onClick={() => void onSaveQuick()}>重试保存</button></div>
             )}
           </div>
         </div>
@@ -1179,8 +1254,8 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
   }
 
   // ── AI 词条面板 ──────────────────────────────
-  const panelW = size.width || PANEL_WIDTH
-  const pos = placeAt(anchor.rect, panelW, size.height)
+  const panelW = PANEL_WIDTH
+  const pos = placeAt(anchor.rect, panelW, Math.min(460, window.innerHeight - 16))
   const rawLeft = fixedPos ? fixedPos.left : (pos.left + dragOffset.x)
   const rawTop = fixedPos ? fixedPos.top : (pos.top + dragOffset.y)
   const clamped = clampPos(rawLeft, rawTop, panelW)
@@ -1205,7 +1280,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
         role="dialog"
         aria-label={`「${anchor.ctx.selection}」的词条`}
       >
-        <div className="wc-fade" key={phase.kind} aria-live="polite">
+        <div className="wc-fade" aria-live="polite">
         {sidePanelHint && (
           <div className="wc-toast-hint" role="status">
             受浏览器限制，请点击浏览器右上角扩展栏插件图标打开侧边栏
@@ -1234,6 +1309,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
               <button type="button" className="wc-btn wc-btn-primary" onClick={() => lookup(anchor.ctx, true)}>
                 重试
               </button>
+              <button type="button" className="wc-btn wc-btn-ghost" onClick={() => void quickLookup(anchor.ctx)}>改用在线快译</button>
               <button
                 type="button"
                 className="wc-btn wc-btn-ghost"
@@ -1278,12 +1354,12 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             />
 
             <LearningEditor entry={phase.entry} sentence={anchor.ctx.sentence} selection={anchor.ctx.selection} edits={{ ...learningEdits, ...(overrideDef !== null ? { definition: overrideDef } : {}) }} onChange={value => { setLearningEdits(value); setOverrideDef(value.definition ?? null); setSave({ kind: 'idle' }) }} />
-            <div className="wc-actions">
+            <div className="wc-actions wc-actions-result">
               <button
                 type="button"
-                className="wc-btn wc-btn-ghost"
+                className="wc-btn wc-btn-ghost wc-btn-accent"
                 onClick={() => lookup(anchor.ctx, true)}
-              >重新生成</button>
+              >AI 详解</button>
               <button
                 type="button"
                 className="wc-btn wc-btn-primary"
@@ -1295,23 +1371,11 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
                 {!saveDisabled && <span className="wc-kbd">↵ Enter</span>}
               </button>
 
-              {saved && (
-                <span className="wc-note wc-note-ok">
-                  <Check size={13} />
-                  <span>已加入生词库</span>
-                </span>
-              )}
 
               {dupe === 'yes' && !saved && !queued && (
                 <span className="wc-note">这条语境已保存，可编辑或重新生成后更新</span>
               )}
 
-              {save.kind === 'queued' && (
-                <span className="wc-note wc-note-ok">
-                  <Check size={13} />
-                  <span>已存入生词库</span>
-                </span>
-              )}
 
               <div className="wc-spacer" />
               <button type="button" className="wc-btn wc-btn-ghost" onClick={dismiss}>关闭</button>
@@ -1320,6 +1384,7 @@ export default function App({ shadowHost }: { shadowHost: HTMLElement }) {
             {save.kind === 'failed' && (
               <div className="wc-error" role="alert" style={{ marginTop: 8 }}>
                 {save.message}
+                <button type="button" className="wc-link" onClick={() => void onSave()}>重试保存</button>
                 {' '}
                 <button
                   className="wc-link"

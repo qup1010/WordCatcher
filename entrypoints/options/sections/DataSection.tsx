@@ -1,12 +1,11 @@
 import { webDavStatusLabel } from '@/lib/webdav'
 import { BookOpen, Cloud, Download, RefreshCw, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { backupFileName, buildBackup, describeSettings, parseBackup } from '@/lib/backup'
+import { backupFileName, buildBackup, parseBackup } from '@/lib/backup'
 import { sendMessage } from '@/lib/messaging'
-import { saveSettings } from '@/lib/settings'
 import type { Settings, WebDavSyncState } from '@/lib/types'
 import { Section } from '../components/Section'
-import { StatusChip, Switch } from '../components/controls'
+import { Switch } from '../components/controls'
 import type { SectionProps, Status } from './types'
 
 function formatSyncTime(ms?: number): string {
@@ -22,7 +21,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
   const [webdavStatus, setWebdavStatus] = useState<Status>({ kind: 'idle' })
   const [webdavState, setWebdavState] = useState<WebDavSyncState>({})
   const [cacheSize, setCacheSize] = useState(0)
-  const [cacheNote, setCacheNote] = useState<string | null>(null)
+  const [cacheStatus, setCacheStatus] = useState<Status>({ kind: 'idle' })
   const [backupStatus, setBackupStatus] = useState<Status>({ kind: 'idle' })
   const fileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
@@ -65,14 +64,14 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
     setWebdavStatus({
       kind: 'ok',
       text: res.data.exists
-        ? `WebDAV 连接成功，已检测到远端同步文件（${res.data.fileUrl}）。`
-        : `WebDAV 连接成功，远端目录就绪，首次同步时将自动创建 ${res.data.fileUrl}。`,
+        ? 'WebDAV 连接成功，已找到同步文件。'
+        : 'WebDAV 连接成功，首次同步时会创建同步文件。',
     })
   }
 
   const onSyncWebDav = async () => {
     setWebdavStatus({ kind: 'busy' })
-    if (connectionsDirty) { setWebdavStatus({ kind: 'err', text: '请先保存连接配置，再立即同步。' }); return }
+    if (connectionsDirty) { setWebdavStatus({ kind: 'err', text: '请先点击页面底部的「保存配置」，再开始同步。' }); return }
     const res = await sendMessage({ type: 'webdav-sync', payload: { forcePush: true } })
     if (!res.ok) {
       setWebdavStatus({ kind: 'err', text: res.error })
@@ -107,7 +106,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
     a.download = `word-catcher-library-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-    setLibraryStatus({ kind: 'ok', text: `已导出 ${libraryCount} 条生词库语境记录。` })
+    setLibraryStatus({ kind: 'ok', text: '生词库备份已导出。' })
   }
 
   const onImportLibraryFile = async (file: File) => {
@@ -121,7 +120,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
           kind: 'ok',
           text: res.data.added > 0
             ? `已导入 ${res.data.added} 条新的语境记录（当前共 ${res.data.records.length} 条）。`
-            : '备份文件已解析，未发现新的语境记录。',
+            : `导入完成，当前共 ${res.data.records.length} 条语境记录。`,
         })
       } else {
         setLibraryStatus({ kind: 'err', text: res.error })
@@ -132,12 +131,13 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
   }
 
   const onClearCache = async () => {
+    setCacheStatus({ kind: 'busy' })
     const res = await sendMessage({ type: 'clear-cache' })
-    if (!res.ok) return
+    if (!res.ok) { setCacheStatus({ kind: 'err', text: `AI 缓存未清空：${res.error} 请重试。` }); return }
     setCacheSize(0)
-    setCacheNote(res.data.cleared > 0
-      ? `已清理 ${res.data.cleared} 条缓存，下次划选将重新生成。`
-      : '当前没有缓存记录。')
+    setCacheStatus({ kind: 'ok', text: res.data.cleared > 0
+      ? `已清空 ${res.data.cleared} 条 AI 缓存，下次相同的 AI 查询会重新生成。`
+      : '当前没有 AI 缓存。' })
   }
 
   const onExport = async () => {
@@ -155,27 +155,36 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
     a.click()
     URL.revokeObjectURL(url)
 
-    setBackupStatus({ kind: 'ok', text: '已导出插件配置与查词历史。导出文件中包含 API Key，请妥善保管。' })
+    setBackupStatus({ kind: historyRes.ok ? 'ok' : 'err', text: historyRes.ok
+      ? '已导出当前设置和查词历史。文件含明文 API Key 与 WebDAV 密码，请妥善保管。'
+      : '已导出当前设置；查词历史读取失败，本次备份未包含历史。文件含明文 API Key 与 WebDAV 密码，请妥善保管。' })
   }
 
   const onImportFile = async (file: File) => {
     setBackupStatus({ kind: 'busy' })
-    const result = parseBackup(await file.text())
+    try {
+      const result = parseBackup(await file.text())
 
-    if (!result.ok) {
-      setBackupStatus({ kind: 'err', text: result.error })
-      return
-    }
+      if (!result.ok) {
+        setBackupStatus({ kind: 'err', text: result.error })
+        return
+      }
 
-    // 导入内容先展示为连接草稿，由用户明确保存。
-    if (result.history && result.history.length > 0) {
-      await sendMessage({ type: 'history-import', payload: { items: result.history } })
+      let historyError = ''
+      if (result.history && result.history.length > 0) {
+        const historyResult = await sendMessage({ type: 'history-import', payload: { items: result.history } })
+        if (!historyResult.ok) historyError = historyResult.error
+      }
+      onChange(result.settings)
+      setBackupStatus({
+        kind: historyError ? 'err' : 'ok',
+        text: historyError
+          ? `设置已载入，但查词历史导入失败：${historyError} 请核对设置，并点击「保存配置」。`
+          : '设置已载入，请核对页面内容。AI、WebDAV 和 Anki 配置需点击「保存配置」；翻译、词典和操作选项会自动保存。',
+      })
+    } catch {
+      setBackupStatus({ kind: 'err', text: '无法读取设置文件，请重新选择有效的 JSON 设置备份。' })
     }
-    onChange(result.settings)
-    setBackupStatus({
-      kind: 'ok',
-      text: `已载入配置草稿，请保存配置：${describeSettings(result.settings, result.history?.length ?? 0)}`,
-    })
   }
 
   const webdavEnabled = Boolean(s.webdav?.enabled)
@@ -185,17 +194,17 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
       id="sec-data"
       index={3}
       title="词库与同步"
-      intro="管理 WebDAV 多端生词库同步、本地生词库备份、插件配置迁移与 AI 释义缓存。"
+      intro="用 WebDAV 在设备间同步生词库，或导出备份迁移数据。"
     >
       {/* ── WebDAV 多端生词库同步 ── */}
       <div className="block">
         <div className="block-head">
           <Cloud size={14} className="inline-icon" />
-          <strong>WebDAV 生词库多端同步</strong>
+          <strong>WebDAV 词库同步</strong>
           <span className="chip" role="status">{webDavStatusLabel(webdavEnabled, webdavState)}</span>
         </div>
         <p className="block-hint">
-          各端配置相同的 HTTPS WebDAV 地址和文件路径，可同步词条、语境、编辑和删除。自动同步在修改词条或打开生词库时触发，也可点击「立即同步」拉取其他设备的改动。服务器需支持强 ETag 条件写入；发生冲突时会停止上传并保留两端内容。
+          在插件和桌面端填写相同的 HTTPS 地址与文件路径，即可同步收藏、原句和个人编辑。删除也会同步。
         </p>
 
         <div className="field" style={{ marginTop: 12 }}>
@@ -206,7 +215,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
               onChange={enabled => patchWebDav({ enabled })}
             />
             <span className="field-inline-label">
-              {webdavEnabled ? '已启用多端生词库同步' : '已关闭（仅使用本地存储）'}
+              {webdavEnabled ? '保存配置后，可与其他设备同步生词库。' : '关闭时，收藏保存在当前浏览器中。'}
             </span>
           </div>
         </div>
@@ -232,7 +241,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
             </label>
 
             <label className="field" style={{ marginTop: 12 }}>
-              <span>用户名 / 账号</span>
+              <span>WebDAV 用户名</span>
               <input
                 value={s.webdav.username}
                 placeholder="WebDAV 用户名或邮箱"
@@ -241,7 +250,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
             </label>
 
             <label className="field" style={{ marginTop: 12 }}>
-              <span>密码 / 应用密码</span>
+              <span>WebDAV 密码</span>
               <input
                 type="password"
                 value={s.webdav.password}
@@ -257,9 +266,11 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
                   checked={s.webdav.autoSync !== false}
                   onChange={autoSync => patchWebDav({ autoSync })}
                 />
-                <span className="field-inline-label">保存、编辑、删除词条或打开生词库时自动与云端合并</span>
+                <span className="field-inline-label">修改词条或打开生词库时自动同步；关闭后仍可手动同步。</span>
               </div>
             </div>
+
+            <p className="hint">先测试连接，再点击「保存配置」。需要拉取其他设备的修改时，点击「立即同步生词库」。</p>
 
             <div className="block-actions" style={{ marginTop: 16 }}>
               <button
@@ -286,15 +297,23 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
             {webdavStatus.kind === 'idle' && webdavState.lastError && (
               <p className="err">上次同步失败：{webdavState.lastError}</p>
             )}
+            {Boolean(webdavState.lastSyncedAt) && <p className="hint">上次同步：{formatSyncTime(webdavState.lastSyncedAt)}</p>}
           </>
         )}
+        <details className="adv-details">
+          <summary>同步范围与服务器要求</summary>
+          <div className="adv-details-body">
+            <p>同步包含收藏的词条、语境、个人编辑和删除。插件设置、查词历史、API Key、WebDAV 密码及 Anki 同步任务各自保存在本地。</p>
+            <p>服务器需提供强 ETag 并支持条件写入，用于避免覆盖其他设备的修改。发生冲突时会保留两端内容，请在下方比较并选择要保留的版本。</p>
+          </div>
+        </details>
       </div>
 
       {webdavState.conflict && <div className="block" role="region" aria-label="同步冲突对照">
-        <h3>有冲突</h3><p>同一记录在两端均有修改。选择要保留的完整版本，随后重新同步。</p>
+        <h3>同一条收藏在两端都有修改</h3><p>请比较下方内容，再选择要保留的完整版本。选择后会重新同步。</p>
         <div className="conflict-columns">
           {([['本地版本',webdavState.conflict.local],['云端版本',webdavState.conflict.remote]] as const).map(([label,record]) => <div key={label}>
-            <h4>{label} · {record.deletedAt ? '已删除' : '有效记录'}</h4>
+            <h4>{label} · {record.deletedAt ? '已删除' : '未删除'}</h4>
             <strong>{record.wordMeta?.displayWord || record.card.entry.word}</strong>
             <p>{record.card.sentence}</p>
             <dl><dt>释义</dt><dd>{record.edits?.definition ?? record.card.entry.definition}</dd><dt>译文</dt><dd>{record.edits?.contextTranslation ?? record.card.entry.contextTranslation}</dd><dt>备注</dt><dd>{record.edits?.note || '无'}</dd></dl>
@@ -302,7 +321,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
           </div>)}
         </div>
         <div className="row"><button className="btn" disabled={connectionsDirty || webdavStatus.kind === 'busy'} onClick={() => void resolveConflict(true)}>保留本地版本</button><button className="btn" disabled={connectionsDirty || webdavStatus.kind === 'busy'} onClick={() => void resolveConflict(false)}>保留云端版本</button></div>
-        {connectionsDirty && <p className="hint">请先保存或放弃连接配置修改。</p>}
+        {connectionsDirty && <p className="hint">请先保存或放弃页面底部未保存的配置，再处理冲突。</p>}
       </div>}
             {/* ── 本地生词库数据 ── */}
       <div className="block">
@@ -312,7 +331,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
           <span className="chip">{libraryCount} 条语境</span>
         </div>
         <p className="block-hint">
-          导出或导入保存在本地「生词库」中的所有生词、原句语境、AI 详解与个人笔记，支持与 Windows 桌面端互相导入。
+          备份收藏的单词、原句、释义和个人笔记，也可与桌面版互相导入。此文件不包含设置和 API Key。
         </p>
         <div className="block-actions">
           <button className="btn btn-icon" onClick={() => void onExportLibrary()}>
@@ -349,9 +368,8 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
           <strong>设置与查词历史备份</strong>
         </div>
         <p className="block-hint">
-          更换设备时可将当前设置与最近查词历史导出迁移（同样兼容导入 Windows 桌面端的设置文件）。
-          <strong className="warn-inline">导出文件中包含明文 API Key 与 WebDAV 密码</strong>
-          ，请注意保管，勿随意分享。
+          导出当前页面的设置与最近查词历史，用于迁移数据。
+          <strong className="warn-inline">文件包含明文 API Key 与 WebDAV 密码，请妥善保管。</strong>
         </p>
         <div className="block-actions">
           <button className="btn btn-icon" onClick={() => void onExport()}>
@@ -364,7 +382,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
             onClick={() => fileRef.current?.click()}
           >
             <Upload size={14} />
-            <span>导入设置文件</span>
+            <span>导入设置与历史</span>
           </button>
           <input
             ref={fileRef}
@@ -378,6 +396,7 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
             }}
           />
         </div>
+        <p className="hint">导入后，翻译、词典和操作选项自动保存；AI、WebDAV 和 Anki 配置请核对后保存。也支持导入桌面版设置文件，其中的 API Key 需重新填写。</p>
         {backupStatus.kind === 'ok' && <p className="ok">{backupStatus.text}</p>}
         {backupStatus.kind === 'err' && <p className="err">{backupStatus.text}</p>}
       </div>
@@ -386,15 +405,16 @@ export function DataSection({ s, onChange, connectionsDirty }: SectionProps) {
       <div className="block">
         <div className="block-head">
           <strong>AI 释义缓存</strong>
-          <span className="chip">{cacheSize}</span>
+          <span className="chip">{cacheSize} 条</span>
         </div>
         <p className="block-hint">
-          同一句话中的同一个词不会重复请求 AI。缓存仅保存在运行内存中，更换模型后如需立即重新生成，可手动清理。
+          重复的 AI 查询会优先使用内存缓存。清空后，下次相同查询会重新请求 AI；收藏和查词历史会保留。
         </p>
         <div className="block-actions">
-          <button className="btn" onClick={() => void onClearCache()}>清空缓存</button>
+          <button className="btn" disabled={cacheStatus.kind === 'busy'} onClick={() => void onClearCache()}>{cacheStatus.kind === 'busy' ? '正在清空…' : '清空 AI 缓存'}</button>
         </div>
-        {cacheNote && <p className="ok">{cacheNote}</p>}
+        {cacheStatus.kind === 'ok' && <p className="ok">{cacheStatus.text}</p>}
+        {cacheStatus.kind === 'err' && <p className="err" role="alert">{cacheStatus.text}</p>}
       </div>
     </Section>
   )
